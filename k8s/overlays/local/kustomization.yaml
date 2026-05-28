@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+
+configMapGenerator:
+  - name: local-runtime-notes
+    namespace: data-pipeline
+    literals:
+      - runtime=kind
+      - warehouse=hdfs://namenode:9000/warehouse
+      - kafkaBootstrap=kafka:29092
+
+secretGenerator:
+  - name: platform-secrets
+    namespace: data-pipeline
+    literals:
+      - POSTGRES_DB=payments
+      - POSTGRES_USER=dataeng
+      - POSTGRES_PASSWORD=changeme
+      - METASTORE_DB=metastore
+      - METASTORE_USER=hive
+      - METASTORE_PASSWORD=changeme
+      - AIRFLOW_DB=airflow
+      - AIRFLOW_USER=airflow
+      - AIRFLOW_PASSWORD=changeme
+      - AIRFLOW_ADMIN_USERNAME=admin
+      - AIRFLOW_ADMIN_PASSWORD=changeme

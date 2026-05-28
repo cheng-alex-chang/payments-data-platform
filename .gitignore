@@ -7,3 +7,7 @@ __pycache__/
 .claude/
 .env
 config/trino/etc/log.properties
+.kind/
+.terraform/
+*.tfstate
+*.tfstate.*

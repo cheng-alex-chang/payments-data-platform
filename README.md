@@ -58,6 +58,8 @@ config/statsd/                 StatsD exporter mapping for Airflow metrics
 config/trino/                  Trino config and Iceberg catalog
 config/trino-exporter/         Custom Trino REST -> Prometheus exporter
 docs/                          Design docs
+infra/terraform/local-kind/    Terraform-managed local kind cluster
+k8s/                           Kubernetes manifests and local overlay
 scripts/                       Helper scripts
 sql/trino/                     Trino validation SQL
 tests/                         Unit tests
@@ -111,6 +113,24 @@ Then trigger the Airflow DAG again so bronze, silver, and gold pick up the new C
 source .venv/bin/activate
 pytest --cov --cov-report=term-missing
 ```
+
+## Optional Local Kubernetes
+
+Docker Compose remains the primary local runtime. A no-cost Terraform + Kubernetes foundation is also available for local infrastructure and orchestration workflows with `kind`. The current Kubernetes slice creates the local cluster, applies shared config, and runs the source Postgres database as a StatefulSet.
+
+```bash
+bash scripts/k8s_up.sh
+export KUBECONFIG=.kind/kubeconfig
+kubectl get statefulsets,pods,svc,pvc -n data-pipeline
+```
+
+Stop and remove the local cluster with:
+
+```bash
+bash scripts/k8s_down.sh
+```
+
+See [docs/kubernetes.md](docs/kubernetes.md) for the current scope and next workloads to add.
 
 ## Airflow Pipeline
 

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data-pipeline
+  labels:
+    app.kubernetes.io/name: data-pipeline
+    app.kubernetes.io/part-of: local-cdc-data-platform
