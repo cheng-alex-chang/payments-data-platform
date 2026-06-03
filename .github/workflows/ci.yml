@@ -35,4 +35,28 @@ jobs:
 
       - run: pip install -r requirements-ci.txt
 
-      - run: pytest --cov=config/spark/jobs --cov=scripts --cov-report=term-missing --cov-fail-under=80
+      - run: >-
+          pytest
+          --cov=config/spark/jobs
+          --cov=scripts
+          --cov=databricks/src/common.py
+          --cov-report=term-missing
+          --cov-fail-under=80
+
+  bundle:
+    # Validates the Databricks Asset Bundle. The validate step runs only when the
+    # DATABRICKS_HOST / DATABRICKS_TOKEN repo secrets are set, so the job stays
+    # green out-of-the-box and becomes a real check once you add credentials.
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: databricks/setup-cli@main
+
+      - name: Validate bundle
+        if: env.DATABRICKS_HOST != ''
+        working-directory: databricks
+        run: databricks bundle validate -t dev
