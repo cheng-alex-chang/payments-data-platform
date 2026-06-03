@@ -5,8 +5,6 @@ import json
 import pathlib
 from datetime import datetime, timezone
 
-import pytest
-
 
 def _load_common():
     path = pathlib.Path(__file__).resolve().parents[1] / "databricks" / "src" / "common.py"

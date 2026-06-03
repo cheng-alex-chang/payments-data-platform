@@ -1,16 +1,25 @@
-# Databricks Workflow (Job) that replaces the Airflow DAG.
-#
-# Single notebook task on serverless. Free Edition serverless intermittently fails
-# to read sibling workspace .py files via FUSE (OSError [Errno 5]), which breaks
-# both spark_python_task file-exec and runtime `import` of a shared module. The
-# whole medallion sequence therefore lives in one self-contained notebook, whose
-# source is delivered by the notebook service rather than the FUSE mount.
+# Databricks Workflow (Job) orchestrating the medallion:
+#   seed      -> notebook: lands Debezium envelopes in the Volume
+#   medallion -> pipeline_task: runs the DLT pipeline (see payments.pipeline.yml)
+#   validate  -> notebook: reconciles 124 / 124 / 124
 resources:
   jobs:
     payments_pipeline:
       name: payments-medallion
       max_concurrent_runs: 1
       tasks:
-        - task_key: medallion
+        - task_key: seed
           notebook_task:
-            notebook_path: ../src/payments_pipeline.py
+            notebook_path: ../src/seed_to_volume.py
+
+        - task_key: medallion
+          depends_on:
+            - task_key: seed
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.payments_dlt.id}
+
+        - task_key: validate
+          depends_on:
+            - task_key: medallion
+          notebook_task:
+            notebook_path: ../src/validate_counts.py

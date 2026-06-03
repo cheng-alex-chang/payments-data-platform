@@ -1,48 +1,76 @@
 # Payments Pipeline on Databricks (Free Edition)
 
-A serverless, Unity Catalog + Delta port of the local payments medallion
-pipeline. It preserves the data contract from [../docs/design.md](../docs/design.md)
-— the seed files carry Debezium-shaped envelopes so the Silver/Gold logic is a
-1:1 port of [../config/spark/jobs](../config/spark/jobs) — while swapping the
-infrastructure for what Databricks Free Edition provides.
+A serverless, Unity Catalog + Delta port of the local payments medallion pipeline,
+expressed as a **Lakeflow Declarative Pipeline (DLT)**. It preserves the data
+contract from [../docs/design.md](../docs/design.md) — the seed carries
+Debezium-shaped envelopes so the Silver/Gold transforms match
+[../config/spark/jobs](../config/spark/jobs) — while swapping the infrastructure
+for what Databricks provides.
+
+## Architecture
+
+```
+  Databricks Asset Bundle (databricks.yml)  ──deploy──▶  Workspace
+                                                            │
+   ┌──────────────────── Workflow: payments-medallion ──────────────────────┐
+   │                                                                         │
+   │   seed ───────────▶  medallion  ───────────▶  validate                 │
+   │  (notebook)        (DLT pipeline)             (notebook)                │
+   └────────┼───────────────┼────────────────────────┼──────────────────────┘
+            │               │                         │
+   write 124 Debezium       │                  assert 124/124/124
+   'r' envelopes            ▼
+            ▼     ┌──────── Lakeflow Declarative Pipeline ─────────┐
+   /Volumes/.../  │  Bronze ───────▶ Silver ───────▶ Gold          │
+     landing  ───▶│  Auto Loader     AUTO CDC         hourly        │
+   (JSONL files)  │  + PII mask      + expectations   metrics       │
+                  └────────────────────────────────────────────────┘
+                     Unity Catalog · Delta · workspace.analytics
+```
 
 ## What maps to what
 
-| Local (Compose / Kubernetes) | Databricks Free Edition |
+| Local (Compose / Kubernetes) | Databricks |
 |---|---|
-| Postgres + Debezium + Kafka CDC | `01_seed_to_volume.py` writes Debezium `op='r'` envelopes to a UC Volume |
-| Bronze reads the Kafka topic | Bronze reads the Volume with **Auto Loader** (`cloudFiles`) |
-| Iceberg on HDFS | **Delta** managed tables in **Unity Catalog** |
-| Hive Metastore + Trino | Unity Catalog (ambient `spark`) |
-| Airflow DAG | **Databricks Workflow** (`resources/payments_pipeline.job.yml`) |
+| Postgres + Debezium + Kafka CDC | `seed_to_volume.py` writes Debezium `op='r'` envelopes to a UC Volume |
+| Bronze reads the Kafka topic | DLT Bronze reads the Volume with **Auto Loader** (`cloudFiles`) |
+| Spark `MERGE` upsert + `op='d'` delete | DLT **AUTO CDC** (`apply_changes`, SCD type 1) |
+| Hand-coded data-quality checks + DLQ | DLT **expectations** (`expect_all_or_drop`) tracked in the pipeline UI |
+| Iceberg on HDFS / Hive Metastore / Trino | **Delta** tables in **Unity Catalog** |
+| Airflow DAG | **Databricks Workflow** orchestrating seed → DLT pipeline → validate |
 | Terraform + kind | **Databricks Asset Bundle** (`databricks.yml`) |
-| Trino row-count validation | `05_validate.py` |
+| Trino row-count validation | `validate_counts.py` |
 
-Tables land in `workspace.analytics`:
-`payments_bronze`, `payments_silver`, `payments_silver_dlq`, `payment_metrics_gold`.
-Seed files + streaming checkpoints live under the `workspace.analytics.landing` Volume.
+Tables publish to `workspace.analytics`:
+`payments_bronze`, `payments_silver`, `payment_metrics_gold`.
+The seed lands under the `workspace.analytics.landing` Volume.
 
 ## Layout
 
 ```
 databricks/
   databricks.yml                       bundle config (set your workspace host)
-  resources/payments_pipeline.job.yml  the Workflow (one serverless notebook task)
-  src/payments_pipeline.py             the notebook: setup -> seed -> bronze ->
-                                       silver -> gold -> validate (all stages)
-  src/common.py                        pure-Python reference of the seed/mask/
-                                       constants, unit-tested off-cluster
+  resources/payments_pipeline.job.yml  Workflow (seed -> DLT pipeline -> validate)
+                                       + the DLT pipeline resource
+  src/seed_to_volume.py                land 124 Debezium envelopes in the Volume
+  src/dlt_pipeline.py                  the Lakeflow pipeline: bronze / silver / gold
+  src/validate_counts.py               reconcile 124 / 124 / 124
+  src/common.py                        pure-Python reference (seed/mask/constants),
+                                       unit-tested off-cluster
 ```
 
-### Why one notebook instead of a task-per-stage
+### Design notes
 
-The natural design is six tasks (`setup`, `seed`, `bronze`, `silver`, `gold`,
-`validate`) wired in a Workflow DAG. On **Free Edition serverless** that fails
-intermittently: both `spark_python_task` (which `exec()`s the file) and a runtime
-`import common` read the workspace `.py` over a FUSE mount that throws
-`OSError [Errno 5]` at random. A notebook's source is delivered by the notebook
-service (not FUSE), so consolidating every stage into one notebook is reliable.
-`common.py` is kept as the tested, single-source reference that the notebook mirrors.
+- **Why DLT.** The medallion is declarative: `@dlt.table` for bronze/gold, a
+  parsed change-feed view, and `apply_changes` for the Silver upsert/delete. The
+  data-quality rules become **expectations**, so DLT reports passed/dropped
+  records and renders a lineage graph — the modern, idiomatic Databricks pattern.
+- **Why the seed/validate tasks are self-contained.** Free Edition serverless
+  intermittently fails to read sibling workspace `.py` files over its FUSE mount
+  (`OSError [Errno 5]`), which breaks runtime `import`. The notebook/DLT sources
+  are delivered by the notebook service (not FUSE), so each file is kept
+  self-contained. `common.py` remains the tested single-source reference that
+  the seed mirrors.
 
 ## Run it
 
@@ -63,7 +91,9 @@ service (not FUSE), so consolidating every stage into one notebook is reliable.
    databricks bundle run payments_pipeline -t dev
    ```
 5. Inspect the results:
-   - **Catalog Explorer** → `workspace.analytics` for the four Delta tables.
+   - **Pipelines** → the DLT pipeline for the lineage graph + per-expectation
+     pass/drop counts.
+   - **Catalog Explorer** → `workspace.analytics` for the three Delta tables.
    - **SQL Editor**:
      ```sql
      SELECT count(*) FROM workspace.analytics.payments_bronze;        -- 124
@@ -72,14 +102,8 @@ service (not FUSE), so consolidating every stage into one notebook is reliable.
      FROM workspace.analytics.payment_metrics_gold;                   -- sum = 124
      ```
 
-The notebook's final cell asserts those counts, so a green run already proves the
-124 → 124 → 124 reconciliation (DLQ empty).
-
-### Manual fallback (no CLI)
-
-Import `src/payments_pipeline.py` into the workspace as a notebook and Run All on
-serverless. It is fully self-contained (no imports of sibling files), so it needs
-nothing else deployed.
+The `validate` task asserts those counts, so a green run already proves the
+124 → 124 → 124 reconciliation.
 
 ## Tests
 
@@ -95,8 +119,10 @@ pytest tests/test_databricks_helpers.py
 - Free Edition is **serverless only** — there is no Kafka/Debezium, so CDC is
   simulated by seed files. The envelope shape is identical, so moving to a real
   source later (Auto Loader from a CDC export, or Lakeflow Connect) would not
-  touch Silver/Gold.
-- Tables use **Liquid Clustering** (`CLUSTER BY`) instead of Iceberg's
-  `days(col)` hidden partitioning.
+  touch the DLT transforms.
+- The Silver upsert is SCD type 1 keyed on `payment_id`, sequenced by
+  `updated_at`, with `op='d'` applied as deletes — matching the local MERGE/delete.
 - Re-running is idempotent: the seed overwrites one file path and Auto Loader
   tracks processed files, so Bronze will not double-ingest.
+- If you previously created non-DLT tables in `workspace.analytics`, drop them
+  first — a DLT pipeline will not publish over tables it does not own.

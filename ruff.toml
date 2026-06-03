@@ -1,0 +1,5 @@
+# Databricks notebooks under databricks/src/ run with runtime-injected globals
+# (spark, dbutils, dlt, display) that are undefined at lint time. Ignore the
+# resulting F821 there only; the rest of the repo keeps full undefined-name checks.
+[lint.per-file-ignores]
+"databricks/src/*.py" = ["F821"]

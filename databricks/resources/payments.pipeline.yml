@@ -1,0 +1,12 @@
+# Lakeflow Declarative Pipeline (DLT) for the payments medallion.
+# Publishes bronze / silver / gold to workspace.analytics with expectations + AUTO CDC.
+resources:
+  pipelines:
+    payments_dlt:
+      name: payments-medallion-dlt
+      serverless: true
+      catalog: workspace
+      schema: analytics
+      libraries:
+        - notebook:
+            path: ../src/dlt_pipeline.py
