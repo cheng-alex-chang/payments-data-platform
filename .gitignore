@@ -11,3 +11,4 @@ config/trino/etc/log.properties
 .terraform/
 *.tfstate
 *.tfstate.*
+.databricks/

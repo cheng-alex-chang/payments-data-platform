@@ -1,0 +1,14 @@
+# Databricks Asset Bundle for the payments medallion pipeline.
+# Deploy with the Databricks CLI: `databricks bundle deploy -t dev`.
+bundle:
+  name: payments-pipeline
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-9e931fd5-a7b1.cloud.databricks.com
