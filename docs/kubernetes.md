@@ -1,19 +1,40 @@
 # Local Kubernetes
 
-This project keeps Docker Compose as the fastest local runtime and adds Kubernetes as an optional local orchestration path.
+This project keeps Docker Compose as the fastest local runtime and adds Kubernetes as an optional local orchestration path. The Kubernetes path should grow toward parity with the Compose platform without changing the data contracts described in [design.md](design.md).
 
-The first Kubernetes slice is intentionally small:
+## Current Scope
+
+The current Kubernetes path has a full local-platform manifest set:
 
 - Terraform creates a local `kind` cluster.
 - Kustomize applies the `data-pipeline` namespace.
-- Kustomize generates ConfigMaps from the existing repo config files.
-- Kubernetes runs the source Postgres database as the first StatefulSet workload.
-
-That gives the project a Kubernetes foundation without duplicating service configuration by hand.
+- Kustomize generates shared ConfigMaps and Secrets from the existing repo config files and local overlay values.
+- Kubernetes defines source Postgres, metastore database, HDFS NameNode/DataNode, Hive Metastore, Trino, Zookeeper/Kafka/Kafka Connect, connector registration, Spark bronze/silver/gold job templates, Airflow, Prometheus/exporters, Grafana, and Metabase.
+- An `hdfs-init` Job prepares local warehouse and checkpoint directories for Spark writes.
+- Connector registration and Spark job manifests are suspended by default so they do not run before their dependencies are Ready.
 
 The Kustomize base keeps mechanical copies of selected files from `config/` under `k8s/base/config/` because standard `kubectl apply -k` does not load files outside the kustomization tree.
 
 The kind cluster does not reserve application ports up front. As services are added, use `kubectl port-forward` for the specific UI or API you want to inspect.
+
+## Runtime Status
+
+The manifest set renders and is structurally validated with:
+
+```bash
+python scripts/validate_k8s_manifests.py
+```
+
+The Kubernetes path has been smoke-tested locally through:
+
+- all core pods Ready in the `data-pipeline` namespace
+- HDFS warehouse/checkpoint initialization
+- source Postgres seed validation (`124` payments)
+- Debezium connector registration with connector and task `RUNNING`
+- Bronze, Silver, and Gold Spark Jobs completing successfully
+- Trino queries over Iceberg returning Bronze `124`, Silver `124`, and Gold total payments `124`
+
+Docker Compose remains the fastest local runtime. Kubernetes is the local orchestration path for practicing cluster operations and migration patterns.
 
 ## Prerequisites
 
@@ -38,21 +59,27 @@ terraform apply -auto-approve
 KUBECONFIG=.kind/kubeconfig kubectl apply -k k8s/overlays/local
 ```
 
+The script also builds and loads the local Airflow, Hive Metastore, and Trino exporter images into the kind cluster.
+
 ## Inspect
 
 ```bash
 export KUBECONFIG=.kind/kubeconfig
 kubectl get ns
 kubectl get configmaps -n data-pipeline
-kubectl get statefulsets,pods,svc,pvc -n data-pipeline
+kubectl get secrets -n data-pipeline
+kubectl get deployments,statefulsets,jobs,pods,svc,pvc -n data-pipeline
+python scripts/validate_k8s_manifests.py
 ```
 
-Expected first-slice result:
+Expected baseline result after dependencies pull and start:
 
 ```text
-pod/postgres-0                 1/1 Running
-statefulset.apps/postgres      1/1
-persistentvolumeclaim/...      Bound
+statefulset.apps/postgres        1/1
+statefulset.apps/metastore-db    1/1
+statefulset.apps/namenode        1/1
+statefulset.apps/datanode        1/1
+persistentvolumeclaim/...        Bound
 ```
 
 You can verify the seeded source table with:
@@ -64,22 +91,56 @@ kubectl exec -n data-pipeline postgres-0 -- \
 
 The expected count is `124` payments from the seed scripts.
 
+Connector registration and Spark job templates are suspended by default. Start or recreate them only after their dependencies are Ready.
+
+```bash
+kubectl patch job register-postgres-cdc -n data-pipeline -p '{"spec":{"suspend":false}}'
+kubectl wait --for=condition=complete job/register-postgres-cdc -n data-pipeline --timeout=180s
+
+kubectl patch job spark-bronze -n data-pipeline -p '{"spec":{"suspend":false}}'
+kubectl wait --for=condition=complete job/spark-bronze -n data-pipeline --timeout=600s
+
+kubectl patch job spark-silver -n data-pipeline -p '{"spec":{"suspend":false}}'
+kubectl wait --for=condition=complete job/spark-silver -n data-pipeline --timeout=600s
+
+kubectl patch job spark-gold -n data-pipeline -p '{"spec":{"suspend":false}}'
+kubectl wait --for=condition=complete job/spark-gold -n data-pipeline --timeout=600s
+```
+
+Validate the serving layer with:
+
+```bash
+kubectl exec -n data-pipeline deploy/trino -- \
+  trino --execute "SELECT count(*) FROM iceberg.analytics.payments_bronze"
+kubectl exec -n data-pipeline deploy/trino -- \
+  trino --execute "SELECT count(*) FROM iceberg.analytics.payments_silver"
+kubectl exec -n data-pipeline deploy/trino -- \
+  trino --execute "SELECT count(*), sum(payment_count) FROM iceberg.analytics.payment_metrics_gold"
+```
+
 ## Stop
 
 ```bash
 bash scripts/k8s_down.sh
 ```
 
-## Next Workloads To Add
+## Next Runtime Hardening Steps
 
-Add Kubernetes manifests in this order:
+The manifests exist for the full local stack and the manual runtime smoke path succeeds. Harden the operating workflow in this order:
 
-1. Metastore database as a StatefulSet.
-2. Zookeeper, Kafka, and Kafka Connect.
-3. HDFS NameNode and DataNode.
-4. Hive Metastore and Trino.
-5. Airflow webserver, scheduler, and init Job.
-6. Spark submit Jobs.
-7. Prometheus, Grafana, and Metabase.
+1. Add dependency-aware readiness waits to `scripts/k8s_verify.sh`.
+2. Convert the suspended Debezium and Spark Jobs into explicit run commands or verification steps.
+3. Replace Docker-oriented Airflow helper scripts with Kubernetes-aware equivalents.
+4. Add service-specific port-forward examples for Airflow, Trino, Prometheus, Grafana, and Metabase.
+5. Move Spark jobs from local-mode Job templates toward Kubernetes-managed Spark driver/executor pods.
 
-The goal is for Kubernetes to mirror the existing Compose architecture first. After that, Spark jobs can move from `docker exec dp-spark` to Kubernetes-managed Spark driver/executor pods.
+The goal is for Kubernetes to mirror the existing Compose architecture first. After that, Spark jobs can move from local-mode Job templates to Kubernetes-managed Spark driver/executor pods.
+
+## Documentation Rules For New Manifests
+
+Keep this page accurate as the Kubernetes path grows:
+
+- List workloads under current scope only after the manifest exists and `kubectl apply -k k8s/overlays/local` creates it.
+- Keep port-forward commands service-specific, because the kind cluster does not reserve fixed application ports.
+- Prefer dependency-focused verification steps over broad claims. For example, check that Hive Metastore can reach its database, Trino can query Iceberg metadata, Kafka Connect has the Debezium connector, and Airflow can trigger the same bronze/silver/gold sequence used locally.
+- Update [design.md](design.md) only when runtime behavior or limitations change, not for manifest inventory churn.

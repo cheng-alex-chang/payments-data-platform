@@ -3,4 +3,5 @@ psycopg2-binary
 requests
 pytest
 pytest-cov
+PyYAML
 ruff

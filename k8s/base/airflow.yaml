@@ -1,0 +1,363 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-postgres
+  namespace: data-pipeline
+  labels:
+    app.kubernetes.io/name: airflow-postgres
+    app.kubernetes.io/component: orchestration
+spec:
+  selector:
+    app.kubernetes.io/name: airflow-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: airflow-postgres
+  namespace: data-pipeline
+  labels:
+    app.kubernetes.io/name: airflow-postgres
+    app.kubernetes.io/component: orchestration
+spec:
+  serviceName: airflow-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: airflow-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: airflow-postgres
+        app.kubernetes.io/component: orchestration
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: AIRFLOW_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: AIRFLOW_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: AIRFLOW_PASSWORD
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: airflow-postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: airflow-postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: airflow
+  namespace: data-pipeline
+  labels:
+    app.kubernetes.io/name: airflow
+    app.kubernetes.io/component: orchestration
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-spark-job-runner
+  namespace: data-pipeline
+subjects:
+  - kind: ServiceAccount
+    name: airflow
+    namespace: data-pipeline
+roleRef:
+  kind: Role
+  name: spark-job-runner
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: airflow-init
+  namespace: data-pipeline
+  labels:
+    app.kubernetes.io/name: airflow-init
+    app.kubernetes.io/component: orchestration
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: airflow-init
+        app.kubernetes.io/component: orchestration
+    spec:
+      serviceAccountName: airflow
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-airflow-postgres
+          image: postgres:15
+          envFrom:
+            - secretRef:
+                name: platform-secrets
+          command:
+            - /bin/sh
+            - -c
+            - until pg_isready -h airflow-postgres -U "$AIRFLOW_USER" -d "$AIRFLOW_DB"; do sleep 2; done
+      containers:
+        - name: airflow-init
+          image: local/data-pipeline-airflow:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -lc
+            - airflow db migrate && (airflow users create --username "$AIRFLOW_ADMIN_USERNAME" --password "$AIRFLOW_ADMIN_PASSWORD" --firstname Data --lastname Engineer --role Admin --email admin@example.com || airflow users list | grep -q "^$AIRFLOW_ADMIN_USERNAME")
+          envFrom:
+            - secretRef:
+                name: platform-secrets
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: LocalExecutor
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: postgresql+psycopg2://$(AIRFLOW_USER):$(AIRFLOW_PASSWORD)@airflow-postgres/$(AIRFLOW_DB)
+            - name: AIRFLOW__CORE__LOAD_EXAMPLES
+              value: "false"
+          volumeMounts:
+            - name: airflow-dags
+              mountPath: /opt/airflow/dags
+            - name: pipeline-scripts
+              mountPath: /opt/airflow/scripts
+            - name: trino-validation-sql
+              mountPath: /opt/airflow/sql/trino
+      volumes:
+        - name: airflow-dags
+          configMap:
+            name: airflow-dags
+        - name: pipeline-scripts
+          configMap:
+            name: pipeline-scripts
+        - name: trino-validation-sql
+          configMap:
+            name: trino-validation-sql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-webserver
+  namespace: data-pipeline
+  labels:
+    app.kubernetes.io/name: airflow-webserver
+    app.kubernetes.io/component: orchestration
+spec:
+  selector:
+    app.kubernetes.io/name: airflow-webserver
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-webserver
+  namespace: data-pipeline
+  labels:
+    app.kubernetes.io/name: airflow-webserver
+    app.kubernetes.io/component: orchestration
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: airflow-webserver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: airflow-webserver
+        app.kubernetes.io/component: orchestration
+    spec:
+      serviceAccountName: airflow
+      initContainers:
+        - name: wait-for-airflow-postgres
+          image: postgres:15
+          envFrom:
+            - secretRef:
+                name: platform-secrets
+          command:
+            - /bin/sh
+            - -c
+            - until pg_isready -h airflow-postgres -U "$AIRFLOW_USER" -d "$AIRFLOW_DB"; do sleep 2; done
+        - name: wait-for-airflow-migrations
+          image: local/data-pipeline-airflow:dev
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: platform-secrets
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: LocalExecutor
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: postgresql+psycopg2://$(AIRFLOW_USER):$(AIRFLOW_PASSWORD)@airflow-postgres/$(AIRFLOW_DB)
+            - name: AIRFLOW__CORE__LOAD_EXAMPLES
+              value: "false"
+          command:
+            - /bin/bash
+            - -lc
+            - until airflow db check-migrations --migration-wait-timeout 1; do sleep 2; done
+      containers:
+        - name: webserver
+          image: local/data-pipeline-airflow:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - airflow
+            - webserver
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: platform-secrets
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: LocalExecutor
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: postgresql+psycopg2://$(AIRFLOW_USER):$(AIRFLOW_PASSWORD)@airflow-postgres/$(AIRFLOW_DB)
+            - name: AIRFLOW__CORE__LOAD_EXAMPLES
+              value: "false"
+            - name: AIRFLOW__METRICS__STATSD_ON
+              value: "true"
+            - name: AIRFLOW__METRICS__STATSD_HOST
+              value: statsd-exporter
+            - name: AIRFLOW__METRICS__STATSD_PORT
+              value: "9125"
+            - name: AIRFLOW__METRICS__STATSD_PREFIX
+              value: airflow
+          volumeMounts:
+            - name: airflow-dags
+              mountPath: /opt/airflow/dags
+            - name: pipeline-scripts
+              mountPath: /opt/airflow/scripts
+            - name: trino-validation-sql
+              mountPath: /opt/airflow/sql/trino
+      volumes:
+        - name: airflow-dags
+          configMap:
+            name: airflow-dags
+        - name: pipeline-scripts
+          configMap:
+            name: pipeline-scripts
+        - name: trino-validation-sql
+          configMap:
+            name: trino-validation-sql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  namespace: data-pipeline
+  labels:
+    app.kubernetes.io/name: airflow-scheduler
+    app.kubernetes.io/component: orchestration
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: airflow-scheduler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: airflow-scheduler
+        app.kubernetes.io/component: orchestration
+    spec:
+      serviceAccountName: airflow
+      initContainers:
+        - name: wait-for-airflow-postgres
+          image: postgres:15
+          envFrom:
+            - secretRef:
+                name: platform-secrets
+          command:
+            - /bin/sh
+            - -c
+            - until pg_isready -h airflow-postgres -U "$AIRFLOW_USER" -d "$AIRFLOW_DB"; do sleep 2; done
+        - name: wait-for-airflow-migrations
+          image: local/data-pipeline-airflow:dev
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: platform-secrets
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: LocalExecutor
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: postgresql+psycopg2://$(AIRFLOW_USER):$(AIRFLOW_PASSWORD)@airflow-postgres/$(AIRFLOW_DB)
+            - name: AIRFLOW__CORE__LOAD_EXAMPLES
+              value: "false"
+          command:
+            - /bin/bash
+            - -lc
+            - until airflow db check-migrations --migration-wait-timeout 1; do sleep 2; done
+      containers:
+        - name: scheduler
+          image: local/data-pipeline-airflow:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - airflow
+            - scheduler
+          envFrom:
+            - secretRef:
+                name: platform-secrets
+          env:
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: LocalExecutor
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: postgresql+psycopg2://$(AIRFLOW_USER):$(AIRFLOW_PASSWORD)@airflow-postgres/$(AIRFLOW_DB)
+            - name: AIRFLOW__CORE__LOAD_EXAMPLES
+              value: "false"
+            - name: AIRFLOW__METRICS__STATSD_ON
+              value: "true"
+            - name: AIRFLOW__METRICS__STATSD_HOST
+              value: statsd-exporter
+            - name: AIRFLOW__METRICS__STATSD_PORT
+              value: "9125"
+            - name: AIRFLOW__METRICS__STATSD_PREFIX
+              value: airflow
+          volumeMounts:
+            - name: airflow-dags
+              mountPath: /opt/airflow/dags
+            - name: pipeline-scripts
+              mountPath: /opt/airflow/scripts
+            - name: trino-validation-sql
+              mountPath: /opt/airflow/sql/trino
+      volumes:
+        - name: airflow-dags
+          configMap:
+            name: airflow-dags
+        - name: pipeline-scripts
+          configMap:
+            name: pipeline-scripts
+        - name: trino-validation-sql
+          configMap:
+            name: trino-validation-sql

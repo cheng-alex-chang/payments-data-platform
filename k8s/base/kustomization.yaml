@@ -4,6 +4,15 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - postgres.yaml
+  - metastore-db.yaml
+  - hdfs.yaml
+  - hive-metastore.yaml
+  - trino.yaml
+  - kafka.yaml
+  - spark.yaml
+  - airflow.yaml
+  - observability.yaml
+  - metabase.yaml
 
 generatorOptions:
   disableNameSuffixHash: true
@@ -48,3 +57,27 @@ configMapGenerator:
     namespace: data-pipeline
     files:
       - postgres-cdc.json=config/connect/postgres-cdc.json
+  - name: spark-jobs
+    namespace: data-pipeline
+    files:
+      - bronze_from_kafka.py=config/spark/jobs/bronze_from_kafka.py
+      - silver_payments.py=config/spark/jobs/silver_payments.py
+      - gold_metrics.py=config/spark/jobs/gold_metrics.py
+      - common.py=config/spark/jobs/common.py
+  - name: airflow-dags
+    namespace: data-pipeline
+    files:
+      - payments_pipeline.py=config/airflow/dags/payments_pipeline.py
+  - name: pipeline-scripts
+    namespace: data-pipeline
+    files:
+      - init_hdfs.py=config/scripts/init_hdfs.py
+      - publish_trino_tables.py=config/scripts/publish_trino_tables.py
+      - run_local_job.py=config/scripts/run_local_job.py
+      - validate_connector.py=config/scripts/validate_connector.py
+      - validate_schema.py=config/scripts/validate_schema.py
+      - validate_trino.py=config/scripts/validate_trino.py
+  - name: trino-validation-sql
+    namespace: data-pipeline
+    files:
+      - validation_queries.sql=config/sql/trino/validation_queries.sql

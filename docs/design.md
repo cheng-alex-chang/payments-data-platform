@@ -63,9 +63,9 @@ Debezium sets `op=d` on delete events and populates `before` instead of `after`.
 
 ## Known Limitations
 
-- **Single Spark executor in the Compose runtime.** Jobs run on `local[*]` inside one container. Horizontal scaling would require a proper Spark cluster (YARN, Kubernetes) and external shuffle service. The optional local Kubernetes foundation is the first step toward that runtime, but Spark still runs through the Compose path today.
+- **Single Spark executor in both local runtimes.** Compose runs jobs on `local[*]` inside one Spark container. The Kubernetes overlay includes suspended Spark Job templates that also use `local[*]` inside the Spark image. A production-like Spark-on-Kubernetes driver/executor setup would require additional Spark submit configuration, image packaging, and executor service account tuning.
 - **Single-replica HDFS.** Replication factor 1 with one datanode. All long-running containers use `restart: unless-stopped` with healthchecks, so a crashed datanode comes back automatically and dependent services (Hive Metastore, Spark, Trino) wait on `condition: service_healthy` before talking to it — so transient container crashes self-recover. The residual gap is data durability: a lost datanode volume would still lose the blocks. Production would use replication factor 3+ across multiple datanodes, or managed object storage (S3, GCS, ADLS) where block loss is not possible.
-- **Partial Kubernetes coverage.** Terraform can create a local `kind` cluster and Kustomize can deploy the namespace, shared ConfigMaps, Secrets, and source Postgres StatefulSet. Kafka, HDFS, Hive Metastore, Trino, Airflow, Spark Jobs, and observability workloads still run through Docker Compose until their Kubernetes manifests are added.
+- **Kubernetes runtime is locally smoke-tested but still operationally basic.** Terraform can create a local `kind` cluster and Kustomize can render the full platform shape: source Postgres, metastore database, HDFS, Hive Metastore, Trino, Kafka/Zookeeper/Kafka Connect, connector registration, Spark Job templates, Airflow, observability, and Metabase. The manual Kubernetes data path has been proven through connector registration, Bronze/Silver/Gold Spark Jobs, and Trino result validation. Remaining hardening is mostly workflow-oriented: dependency-aware verification, Kubernetes-native Airflow triggering, and production-like Spark driver/executor pods.
 - **No schema evolution handling.** If the Postgres schema changes, Debezium will emit new fields but the silver `CREATE TABLE IF NOT EXISTS` will not add columns automatically. A schema migration step would be needed.
 - **Delete-then-recreate within one batch.** If `op=d` and a later `op=c` for the same `payment_id` land in the same micro-batch, the upsert MERGE runs first and the DELETE then removes the recreated row. Rare in practice since Postgres usually reuses deterministic keys, but would need ordered per-key resolution to handle correctly.
 - **Data quality scope.** Silver fails fast on invalid IDs, negative amounts, malformed country/currency codes, unsupported methods/statuses, and timestamps that move backward. A production platform would typically extend this with reconciliation against source totals and external alerting.
@@ -75,12 +75,13 @@ Debezium sets `op=d` on delete events and populates `before` instead of `after`.
 
 The primary runtime is Docker Compose because it brings up the full local data platform with one command and keeps local iteration fast.
 
-An optional local Kubernetes foundation is available for infrastructure-managed deployments:
+An optional local Kubernetes path is available for infrastructure-managed deployments:
 
 ```
 Terraform -> kind cluster -> Kustomize overlay -> data-pipeline namespace
                                              -> shared ConfigMaps and Secrets
-                                             -> source Postgres StatefulSet
+                                             -> stateful databases and HDFS
+                                             -> CDC, query, orchestration, and observability workloads
 ```
 
 This path is intentionally no-cost and local-only. It shows how the platform begins to map from Compose services to Kubernetes primitives:
@@ -92,9 +93,11 @@ This path is intentionally no-cost and local-only. It shows how the platform beg
 | bind-mounted config files | ConfigMaps |
 | `.env` values | Secrets |
 | long-running containers | Deployments or StatefulSets |
-| one-off Spark commands | future Kubernetes Jobs or Spark driver pods |
+| one-off Spark commands | suspended Kubernetes Job templates or future Spark driver pods |
 
-See [kubernetes.md](kubernetes.md) for commands, verification steps, and the staged workload rollout plan.
+The intended Kubernetes direction is Compose parity first. The manifests now cover the full platform shape and the manual data path is runtime-proven. The next hardening step is making that workflow easier to operate: dependency-aware waits, explicit run commands, Airflow triggering, and service-specific inspection commands.
+
+See [kubernetes.md](kubernetes.md) for commands, current verification steps, and the staged workload rollout plan.
 
 ## Orchestration
 

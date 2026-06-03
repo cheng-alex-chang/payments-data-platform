@@ -116,12 +116,13 @@ pytest --cov --cov-report=term-missing
 
 ## Optional Local Kubernetes
 
-Docker Compose remains the primary local runtime. A no-cost Terraform + Kubernetes foundation is also available for local infrastructure and orchestration workflows with `kind`. The current Kubernetes slice creates the local cluster, applies shared config, and runs the source Postgres database as a StatefulSet.
+Docker Compose remains the fastest local runtime. A no-cost Terraform + Kubernetes path is also available for local infrastructure and orchestration workflows with `kind`. The Kubernetes overlay renders the full platform shape, including stateful databases, HDFS, Hive Metastore, Trino, Kafka/Connect, Spark job templates, Airflow, observability, and analytics UI workloads.
 
 ```bash
 bash scripts/k8s_up.sh
 export KUBECONFIG=.kind/kubeconfig
 kubectl get statefulsets,pods,svc,pvc -n data-pipeline
+python scripts/validate_k8s_manifests.py
 ```
 
 Stop and remove the local cluster with:
@@ -130,7 +131,9 @@ Stop and remove the local cluster with:
 bash scripts/k8s_down.sh
 ```
 
-See [docs/kubernetes.md](docs/kubernetes.md) for the current scope and next workloads to add.
+See [docs/kubernetes.md](docs/kubernetes.md) for the current Kubernetes scope, verification commands, and remaining runtime caveats.
+
+The Kubernetes path has been smoke-tested locally through Debezium connector registration, Bronze/Silver/Gold Spark Jobs, and Trino row-count validation.
 
 ## Airflow Pipeline
 
