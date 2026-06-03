@@ -14,6 +14,16 @@ with:
 
 See [docs/design.md](docs/design.md) for layer contracts, incremental processing, CDC delete handling, and known limitations.
 
+## Deployment targets
+
+The same medallion contract (bronze → silver → gold, CDC-aware) runs three ways:
+
+| Target | What it is | Entry point |
+|--------|------------|-------------|
+| **Docker Compose** | Fastest local runtime — the full stack with one command | `docker compose up -d` |
+| **Kubernetes (kind)** | The platform as Terraform + Kustomize manifests (HDFS, Hive Metastore, Trino, Kafka/Debezium, Spark, Airflow, observability) | `bash scripts/k8s_up.sh` |
+| **Databricks (Lakeflow)** | Serverless Unity Catalog + Delta port as a Lakeflow Declarative Pipeline — Auto Loader, AUTO CDC, expectations — deployed via an Asset Bundle | [`databricks/`](databricks/README.md) |
+
 ## Architecture
 
 ```text
@@ -57,6 +67,7 @@ config/spark/jobs/             Spark jobs
 config/statsd/                 StatsD exporter mapping for Airflow metrics
 config/trino/                  Trino config and Iceberg catalog
 config/trino-exporter/         Custom Trino REST -> Prometheus exporter
+databricks/                    Databricks Lakeflow (DLT) port + Asset Bundle
 docs/                          Design docs
 infra/terraform/local-kind/    Terraform-managed local kind cluster
 k8s/                           Kubernetes manifests and local overlay
@@ -133,7 +144,19 @@ bash scripts/k8s_down.sh
 
 See [docs/kubernetes.md](docs/kubernetes.md) for the current Kubernetes scope, verification commands, and remaining runtime caveats.
 
-The Kubernetes path has been smoke-tested locally through Debezium connector registration, Bronze/Silver/Gold Spark Jobs, and Trino row-count validation.
+The Kubernetes path has been verified end-to-end locally — Debezium connector registration, Bronze/Silver/Gold Spark Jobs, and Trino row-count validation all reconcile (124 → 124 → 124).
+
+## Databricks (Lakeflow Declarative Pipeline)
+
+The medallion is also ported to **Databricks** as a serverless **Lakeflow Declarative Pipeline** on Unity Catalog + Delta: Auto Loader ingestion, `apply_changes` (AUTO CDC) for the silver upsert/delete, and expectations for data quality — deployed as a Databricks Asset Bundle and orchestrated by a Workflow (seed → pipeline → validate).
+
+```bash
+cd databricks
+databricks bundle deploy -t dev
+databricks bundle run payments_pipeline -t dev
+```
+
+Verified on Databricks Free Edition: the Delta tables reconcile 124 → 124 → 124 and all silver expectations report 124 passed / 0 failed. See [databricks/README.md](databricks/README.md) for setup, the architecture diagram, and design notes.
 
 ## Airflow Pipeline
 
