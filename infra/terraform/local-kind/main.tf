@@ -4,13 +4,20 @@ locals {
   kubeconfig_abs_path = abspath("${path.module}/${var.kubeconfig_path}")
 }
 
-resource "null_resource" "kind_cluster" {
-  triggers = {
+resource "terraform_data" "kind_cluster" {
+  input = {
     cluster_name    = var.cluster_name
     kind_config_sha = filesha256(local.kind_config_path)
     kubeconfig_path = local.kubeconfig_abs_path
     repo_root       = local.repo_root
   }
+
+  triggers_replace = [
+    var.cluster_name,
+    filesha256(local.kind_config_path),
+    local.kubeconfig_abs_path,
+    local.repo_root,
+  ]
 
   provisioner "local-exec" {
     working_dir = local.repo_root
@@ -19,7 +26,7 @@ resource "null_resource" "kind_cluster" {
 
   provisioner "local-exec" {
     when        = destroy
-    working_dir = self.triggers.repo_root
-    command     = "kind delete cluster --name ${self.triggers.cluster_name}"
+    working_dir = self.input.repo_root
+    command     = "kind delete cluster --name ${self.input.cluster_name}"
   }
 }
