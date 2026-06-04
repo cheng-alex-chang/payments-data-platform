@@ -109,6 +109,7 @@ metadata:
     app.kubernetes.io/name: airflow-init
     app.kubernetes.io/component: orchestration
 spec:
+  activeDeadlineSeconds: 600
   template:
     metadata:
       labels:
@@ -126,7 +127,7 @@ spec:
           command:
             - /bin/sh
             - -c
-            - until pg_isready -h airflow-postgres -U "$AIRFLOW_USER" -d "$AIRFLOW_DB"; do sleep 2; done
+            - i=0; until pg_isready -h airflow-postgres -U "$AIRFLOW_USER" -d "$AIRFLOW_DB"; do i=$((i+1)); [ "$i" -ge 150 ] && { echo "timed out waiting for airflow-postgres" >&2; exit 1; }; sleep 2; done
       containers:
         - name: airflow-init
           image: local/data-pipeline-airflow:dev
@@ -208,7 +209,7 @@ spec:
           command:
             - /bin/sh
             - -c
-            - until pg_isready -h airflow-postgres -U "$AIRFLOW_USER" -d "$AIRFLOW_DB"; do sleep 2; done
+            - i=0; until pg_isready -h airflow-postgres -U "$AIRFLOW_USER" -d "$AIRFLOW_DB"; do i=$((i+1)); [ "$i" -ge 150 ] && { echo "timed out waiting for airflow-postgres" >&2; exit 1; }; sleep 2; done
         - name: wait-for-airflow-migrations
           image: local/data-pipeline-airflow:dev
           imagePullPolicy: IfNotPresent
@@ -225,7 +226,7 @@ spec:
           command:
             - /bin/bash
             - -lc
-            - until airflow db check-migrations --migration-wait-timeout 1; do sleep 2; done
+            - i=0; until airflow db check-migrations --migration-wait-timeout 1; do i=$((i+1)); [ "$i" -ge 150 ] && { echo "timed out waiting for airflow migrations" >&2; exit 1; }; sleep 2; done
       containers:
         - name: webserver
           image: local/data-pipeline-airflow:dev
@@ -301,7 +302,7 @@ spec:
           command:
             - /bin/sh
             - -c
-            - until pg_isready -h airflow-postgres -U "$AIRFLOW_USER" -d "$AIRFLOW_DB"; do sleep 2; done
+            - i=0; until pg_isready -h airflow-postgres -U "$AIRFLOW_USER" -d "$AIRFLOW_DB"; do i=$((i+1)); [ "$i" -ge 150 ] && { echo "timed out waiting for airflow-postgres" >&2; exit 1; }; sleep 2; done
         - name: wait-for-airflow-migrations
           image: local/data-pipeline-airflow:dev
           imagePullPolicy: IfNotPresent
@@ -318,7 +319,7 @@ spec:
           command:
             - /bin/bash
             - -lc
-            - until airflow db check-migrations --migration-wait-timeout 1; do sleep 2; done
+            - i=0; until airflow db check-migrations --migration-wait-timeout 1; do i=$((i+1)); [ "$i" -ge 150 ] && { echo "timed out waiting for airflow migrations" >&2; exit 1; }; sleep 2; done
       containers:
         - name: scheduler
           image: local/data-pipeline-airflow:dev

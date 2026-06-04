@@ -183,6 +183,7 @@ metadata:
     app.kubernetes.io/name: hdfs-init
     app.kubernetes.io/component: hdfs
 spec:
+  activeDeadlineSeconds: 600
   template:
     metadata:
       labels:
