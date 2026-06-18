@@ -32,7 +32,7 @@ Postgres
   -> Kafka topic: cdc.public.payments
   -> Spark bronze job                    Structured Streaming -> Iceberg append
   -> Spark silver job                    foreachBatch -> Iceberg MERGE / DELETE
-  -> Spark gold job                      Batch SQL -> Iceberg MERGE
+  -> Spark gold job                      Batch SQL -> Iceberg INSERT OVERWRITE
   -> Trino                               SQL over Iceberg via Hive Metastore
 ```
 
@@ -50,7 +50,8 @@ Postgres
 
 `Gold`
 - Hourly aggregates per country and payment method (count, gross volume, auth rate)
-- Idempotent full recalculation via `MERGE INTO` on every run
+- Reads only silver — strictly linear `bronze → silver → gold` lineage, no bronze or Debezium-envelope access
+- Full idempotent recompute: one `GROUP BY` over silver, `INSERT OVERWRITE` replaces the whole table every run (so hours emptied by deletes drop out)
 
 ## Repo Layout
 

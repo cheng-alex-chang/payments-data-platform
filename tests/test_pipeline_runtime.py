@@ -355,7 +355,7 @@ def test_init_hdfs_runs_expected_mkdir(monkeypatch: pytest.MonkeyPatch) -> None:
         "-mkdir -p "
         "/data/bronze /data/silver /data/gold "
         "/warehouse /warehouse/analytics.db "
-        "/checkpoints/bronze /checkpoints/silver /checkpoints/gold"
+        "/checkpoints/bronze /checkpoints/silver"
     ]
 
 
@@ -659,33 +659,33 @@ def test_build_upserts_dedups_latest_per_payment_id(monkeypatch: pytest.MonkeyPa
 # gold job
 # ---------------------------------------------------------------------------
 
-def test_gold_metrics_recomputes_affected_partitions(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gold_metrics_recomputes_from_silver(monkeypatch: pytest.MonkeyPatch) -> None:
     module, spark, builder = load_module_with_fake_pyspark(monkeypatch, "config.spark.jobs.gold_metrics")
     module.main()
 
     assert builder.app_name == "gold-metrics"
     assert any(k == "spark.sql.catalog.iceberg.type" for k, _ in builder.config_values)
-    assert spark.readStream.format_value == "iceberg"
-    assert spark.readStream.load_path == module.BRONZE_TABLE
-    assert spark.readStream._frame.writeStream.trigger_kwargs == {"availableNow": True}
-    assert spark.readStream._frame.writeStream.options.get("checkpointLocation") == module.CHECKPOINT_PATH
-    assert spark.readStream._frame.writeStream.foreach_batch_fn == module._recompute_gold_partitions
+    # Gold is a batch recompute over silver — no streaming read of bronze.
+    assert spark.readStream.format_value is None
+    assert spark.readStream.load_path is None
+    overwrite_calls = [c for c in spark.sql_calls if "INSERT OVERWRITE" in c]
+    assert len(overwrite_calls) >= 1
+    assert module.GOLD_TABLE in overwrite_calls[0]
+    assert module.SILVER_TABLE in overwrite_calls[0]
     assert spark.stopped is True
 
 
-def test_gold_recompute_fn_refreshes_changed_hours(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gold_recompute_sql_aggregates_silver(monkeypatch: pytest.MonkeyPatch) -> None:
     module, spark, builder = load_module_with_fake_pyspark(monkeypatch, "config.spark.jobs.gold_metrics")
 
-    module._recompute_gold_partitions(FakeFrame(), 0)
+    module.main()
 
-    delete_calls = [c for c in spark.sql_calls if "DELETE FROM" in c]
-    insert_calls = [c for c in spark.sql_calls if "INSERT INTO" in c]
-    assert len(delete_calls) >= 1
-    assert module.GOLD_TABLE in delete_calls[0]
-    assert len(insert_calls) >= 1
-    assert module.GOLD_TABLE in insert_calls[0]
-    assert module.SILVER_TABLE in insert_calls[0]
-    assert "DECIMAL(18,2)" in insert_calls[0]
+    overwrite_calls = [c for c in spark.sql_calls if "INSERT OVERWRITE" in c]
+    assert len(overwrite_calls) >= 1
+    sql = overwrite_calls[0]
+    assert module.GOLD_TABLE in sql
+    assert module.SILVER_TABLE in sql
+    assert "DECIMAL(18,2)" in sql
 
 
 # ---------------------------------------------------------------------------
@@ -853,6 +853,5 @@ def test_pipeline_table_contracts_are_consistent(monkeypatch: pytest.MonkeyPatch
     # Silver reads from where Bronze writes
     assert silver.BRONZE_TABLE == bronze.BRONZE_TABLE
 
-    # Gold reads Bronze for partition detection and Silver for recomputation
-    assert gold.BRONZE_TABLE == bronze.BRONZE_TABLE
+    # Gold reads only Silver (linear bronze -> silver -> gold lineage)
     assert gold.SILVER_TABLE == silver.SILVER_TABLE

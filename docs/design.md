@@ -35,11 +35,11 @@ Postgres (OLTP)
 - **Guarantee:** Current state of each payment. Handles the full CDC contract: inserts, updates, and deletes.
 
 ### Gold
-- **Source:** Bronze CDC events identify changed hours; silver provides the current-state rows for recomputation
-- **Pattern:** Streaming `foreachBatch` on bronze → recompute only affected hourly partitions in gold
+- **Source:** Silver Iceberg table only — gold reads nothing from bronze (strictly linear `bronze → silver → gold` lineage; the raw Debezium envelope is fully encapsulated by silver)
+- **Pattern:** Batch `INSERT OVERWRITE` — a single `GROUP BY` aggregation over the current silver table that atomically replaces every gold row
 - **Schema:** Hourly aggregates per `country_code` and `payment_method` — `payment_count`, exact-precision `gross_volume`, `auth_rate`
 - **Partitioned by:** `days(payment_hour)`
-- **Guarantee:** Idempotent recomputation of only the hours touched by incoming CDC events. Correct after inserts, updates, and deletes.
+- **Guarantee:** Full idempotent recompute from silver. Because it is a full atomic replace, hours whose payments were all deleted from silver are dropped from gold. Correct after inserts, updates, and deletes.
 
 ## Why Iceberg
 
@@ -55,7 +55,7 @@ Plain Parquet with `mode("overwrite")` rewrites the entire dataset on every run 
 
 Bronze and silver use `trigger(availableNow=True)`. This is the "incremental batch" pattern: Spark reads all data accumulated since the last checkpoint, processes it, commits to Iceberg, and exits. The Airflow scheduler triggers each run on demand. No continuous streaming process is kept alive between runs.
 
-Gold uses the incoming CDC events to determine which `payment_hour` partitions changed. For each micro-batch it deletes the existing gold rows for those hours and recomputes them from the full current silver state. This avoids full-table rescans while staying correct after silver updates and deletes.
+Gold is a full idempotent recompute from silver: every run runs one `GROUP BY` aggregation over the current silver table and `INSERT OVERWRITE`s the whole gold table. Because it reads only silver and atomically replaces every row, it stays correct after silver updates and deletes (emptied hours simply disappear) without ever reaching back to bronze. This trades incrementality for clean linear lineage and self-healing determinism — the right default at this scale. When silver outgrows full rescans, the medallion-correct upgrade is a changelog read from silver (Iceberg `create_changelog_view`) that recomputes only changed hours, never a dependency back on bronze.
 
 ## CDC Delete Handling
 

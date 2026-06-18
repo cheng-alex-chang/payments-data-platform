@@ -12,7 +12,7 @@ def main() -> None:
         "-mkdir -p "
         "/data/bronze /data/silver /data/gold "
         "/warehouse /warehouse/analytics.db "
-        "/checkpoints/bronze /checkpoints/silver /checkpoints/gold"
+        "/checkpoints/bronze /checkpoints/silver"
     )
 
 
