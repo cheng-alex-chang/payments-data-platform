@@ -271,14 +271,21 @@ services:
     container_name: dp-grafana
     restart: unless-stopped
     depends_on:
-      - postgres
-      - prometheus
+      postgres:
+        condition: service_started
+      prometheus:
+        condition: service_started
+      trino:
+        # Wait until Trino is query-ready, otherwise the provisioned Trino
+        # datasource is unreachable on a cold `up` and its health check fails.
+        condition: service_healthy
     ports:
       - "3001:3000"
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      GF_INSTALL_PLUGINS: trino-datasource
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning

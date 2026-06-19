@@ -855,3 +855,65 @@ def test_pipeline_table_contracts_are_consistent(monkeypatch: pytest.MonkeyPatch
 
     # Gold reads only Silver (linear bronze -> silver -> gold lineage)
     assert gold.SILVER_TABLE == silver.SILVER_TABLE
+
+
+# ---------------------------------------------------------------------------
+# Grafana dashboard / datasource wiring
+# ---------------------------------------------------------------------------
+
+def _grafana_paths() -> tuple[Path, Path]:
+    root = Path(__file__).resolve().parents[1]
+    dashboard = root / "config" / "grafana" / "dashboards" / "payments-demo-overview.json"
+    datasources = root / "config" / "grafana" / "provisioning" / "datasources" / "prometheus.yml"
+    return dashboard, datasources
+
+
+def _dashboard_datasource_uids(dashboard: dict) -> set[str]:
+    uids: set[str] = set()
+    for panel in dashboard.get("panels", []):
+        ds = panel.get("datasource") or {}
+        if ds.get("uid"):
+            uids.add(ds["uid"])
+        for target in panel.get("targets", []):
+            tds = target.get("datasource") or {}
+            if tds.get("uid"):
+                uids.add(tds["uid"])
+    return uids
+
+
+def test_dashboard_datasource_uids_are_provisioned() -> None:
+    import yaml
+
+    dashboard_path, datasources_path = _grafana_paths()
+    dashboard = json.loads(dashboard_path.read_text())
+    provisioned = {
+        ds["uid"]
+        for ds in yaml.safe_load(datasources_path.read_text())["datasources"]
+        if ds.get("uid")
+    }
+
+    referenced = _dashboard_datasource_uids(dashboard)
+    assert referenced, "dashboard references no datasources"
+    dangling = referenced - provisioned
+    assert not dangling, f"dashboard references unprovisioned datasource uids: {dangling}"
+
+
+def test_payment_aggregate_panels_read_gold_via_trino() -> None:
+    dashboard_path, _ = _grafana_paths()
+    dashboard = json.loads(dashboard_path.read_text())
+    by_title = {p["title"]: p for p in dashboard["panels"]}
+
+    gold_panels = [
+        "Total Payments", "Gross Volume", "Authorization Rate",
+        "Gross Volume by Hour", "Payment Method Mix", "Gross Volume by Country",
+    ]
+    for title in gold_panels:
+        panel = by_title[title]
+        assert panel["datasource"]["uid"] == "payments-gold-trino", title
+        for target in panel["targets"]:
+            assert target["datasource"]["uid"] == "payments-gold-trino", title
+            assert "payment_metrics_gold" in target["rawSql"], title
+
+    # Refunds are not in the lakehouse yet, so those panels stay on source Postgres.
+    for title in ("Refund Events", "Refunds Over Time"):
+        assert by_title[title]["datasource"]["uid"] == "payments-postgres", title

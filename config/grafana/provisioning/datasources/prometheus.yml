@@ -20,3 +20,13 @@ datasources:
       database: ${POSTGRES_DB}
       postgresVersion: 1500
       sslmode: disable
+
+  - name: Payments Gold (Trino)
+    type: trino-datasource
+    uid: payments-gold-trino
+    access: proxy
+    url: http://trino:8080
+    jsonData:
+      # Local Trino runs without auth; this just sets the X-Trino-User header
+      # (same convention as the trino-exporter sidecar).
+      user: admin

@@ -4,7 +4,7 @@
   "graphTooltip": 0,
   "panels": [
     {
-      "datasource": { "type": "postgres", "uid": "payments-postgres" },
+      "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -33,10 +33,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "payments-postgres" },
-          "format": "time_series",
+          "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
+          "format": 1,
           "rawQuery": true,
-          "rawSql": "SELECT NOW() AS time, COUNT(*)::double precision AS total_payments FROM payments;",
+          "rawSql": "SELECT SUM(payment_count) AS total_payments FROM iceberg.analytics.payment_metrics_gold",
           "refId": "A"
         }
       ],
@@ -44,7 +44,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "postgres", "uid": "payments-postgres" },
+      "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -74,10 +74,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "payments-postgres" },
-          "format": "time_series",
+          "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
+          "format": 1,
           "rawQuery": true,
-          "rawSql": "SELECT NOW() AS time, COALESCE(SUM(amount), 0)::double precision AS gross_volume FROM payments;",
+          "rawSql": "SELECT CAST(SUM(gross_volume) AS DOUBLE) AS gross_volume FROM iceberg.analytics.payment_metrics_gold",
           "refId": "A"
         }
       ],
@@ -85,7 +85,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "postgres", "uid": "payments-postgres" },
+      "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -95,7 +95,8 @@
               { "color": "green", "value": null }
             ]
           },
-          "unit": "percentunit"
+          "unit": "percentunit",
+          "decimals": 1
         },
         "overrides": []
       },
@@ -115,10 +116,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "payments-postgres" },
-          "format": "time_series",
+          "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
+          "format": 1,
           "rawQuery": true,
-          "rawSql": "SELECT NOW() AS time, COALESCE(AVG(CASE WHEN payment_status = 'authorized' THEN 1.0 ELSE 0.0 END), 0)::double precision AS authorization_rate FROM payments;",
+          "rawSql": "SELECT CAST(SUM(auth_rate * payment_count) AS DOUBLE) / NULLIF(SUM(payment_count), 0) AS authorization_rate FROM iceberg.analytics.payment_metrics_gold",
           "refId": "A"
         }
       ],
@@ -166,15 +167,15 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "postgres", "uid": "payments-postgres" },
+      "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
       "id": 5,
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "payments-postgres" },
-          "format": "time_series",
+          "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
+          "format": 0,
           "rawQuery": true,
-          "rawSql": "SELECT date_trunc('hour', created_at) AS time, SUM(amount)::double precision AS gross_volume FROM payments GROUP BY 1 ORDER BY 1;",
+          "rawSql": "SELECT payment_hour AS time, CAST(SUM(gross_volume) AS DOUBLE) AS gross_volume FROM iceberg.analytics.payment_metrics_gold GROUP BY payment_hour ORDER BY payment_hour",
           "refId": "A"
         }
       ],
@@ -182,7 +183,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "postgres", "uid": "payments-postgres" },
+      "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
       "id": 6,
       "options": {
@@ -205,10 +206,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "payments-postgres" },
-          "format": "table",
+          "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
+          "format": 1,
           "rawQuery": true,
-          "rawSql": "SELECT payment_method, COUNT(*)::double precision AS payments FROM payments GROUP BY 1 ORDER BY 2 DESC;",
+          "rawSql": "SELECT payment_method, CAST(SUM(payment_count) AS DOUBLE) AS payments FROM iceberg.analytics.payment_metrics_gold GROUP BY payment_method ORDER BY 2 DESC",
           "refId": "A"
         }
       ],
@@ -216,7 +217,7 @@
       "type": "piechart"
     },
     {
-      "datasource": { "type": "postgres", "uid": "payments-postgres" },
+      "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "id": 7,
       "options": {
@@ -236,10 +237,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "postgres", "uid": "payments-postgres" },
-          "format": "table",
+          "datasource": { "type": "trino-datasource", "uid": "payments-gold-trino" },
+          "format": 1,
           "rawQuery": true,
-          "rawSql": "SELECT country_code, SUM(amount)::double precision AS gross_volume FROM payments GROUP BY 1 ORDER BY 2 DESC;",
+          "rawSql": "SELECT country_code, CAST(SUM(gross_volume) AS DOUBLE) AS gross_volume FROM iceberg.analytics.payment_metrics_gold GROUP BY country_code ORDER BY 2 DESC",
           "refId": "A"
         }
       ],
@@ -266,6 +267,7 @@
   "schemaVersion": 39,
   "style": "dark",
   "tags": ["payments", "demo"],
+  "time": { "from": "now-90d", "to": "now" },
   "title": "Payments Demo Overview",
-  "version": 1
+  "version": 3
 }

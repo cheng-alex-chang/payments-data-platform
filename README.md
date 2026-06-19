@@ -230,16 +230,20 @@ docker exec dp-trino trino --execute "SELECT * FROM iceberg.analytics.payment_me
 
 ## Visualization
 
-Grafana now provisions a `Payments Demo Overview` dashboard backed by the source Postgres database. Open `http://localhost:3001`, go to the `Data Platform` folder, and you should see charts for:
+Grafana provisions a `Payments Demo Overview` dashboard. The six payment-aggregate panels read the curated **gold** layer (`iceberg.analytics.payment_metrics_gold`) through **Trino**, so the dashboard reflects the pipeline's actual output instead of querying the source database directly. The two refund panels still read source Postgres — `refunds` is tracked for schema-drift only and has no silver/gold layer yet (a separate refunds medallion is future work). Open `http://localhost:3001`, go to the `Data Platform` folder, and you should see charts for:
 
-- total payments
-- gross volume
-- authorization rate
-- refund events
-- hourly volume trend
-- payment method mix
-- gross volume by country
-- refunds over time
+- total payments _(gold)_
+- gross volume _(gold)_
+- authorization rate _(gold, payment-weighted across hourly groups)_
+- refund events _(source Postgres)_
+- hourly volume trend _(gold)_
+- payment method mix _(gold)_
+- gross volume by country _(gold)_
+- refunds over time _(source Postgres)_
+
+Two states are expected and **not** bugs:
+- **On first container start** Grafana downloads the `trino-datasource` plugin (`GF_INSTALL_PLUGINS`), which needs internet access.
+- **Until the `payments_pipeline` DAG has run**, gold is empty, so the six gold panels render blank. That is by design — the dashboard now mirrors pipeline output, so no run means no data. Trigger the DAG and the panels populate.
 
 ## Project Tour
 
