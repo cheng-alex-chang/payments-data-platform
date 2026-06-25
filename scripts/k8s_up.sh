@@ -27,6 +27,12 @@ rm -f config/hive-metastore/postgresql-42.7.5.jar
 kind load docker-image local/data-pipeline-airflow:dev --name data-pipeline
 kind load docker-image local/trino-exporter:dev --name data-pipeline
 kind load docker-image local/hive-metastore:dev --name data-pipeline
+
+# Jobs have immutable pod templates, so `kubectl apply` over an existing Job
+# fails ("field is immutable"). Delete any existing Jobs first so re-running this
+# script recreates them cleanly. Harmless on a fresh cluster (nothing to delete).
+KUBECONFIG="${KUBECONFIG_PATH}" kubectl delete jobs --all -n data-pipeline \
+  --ignore-not-found --wait=false 2>/dev/null || true
 KUBECONFIG="${KUBECONFIG_PATH}" kubectl apply -k k8s/overlays/local
 
 echo

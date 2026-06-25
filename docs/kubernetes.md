@@ -48,11 +48,16 @@ Docker Compose remains the fastest local runtime. Kubernetes is the local orches
 bash scripts/k8s_up.sh
 ```
 
-The script runs:
+The script runs (idempotently — safe to re-run):
 
 ```bash
-kind create cluster --name data-pipeline \
-  --config k8s/kind-config.yaml --kubeconfig .kind/kubeconfig --wait 120s
+# create the cluster only if it does not already exist
+kind get clusters | grep -qx data-pipeline \
+  || kind create cluster --name data-pipeline \
+       --config k8s/kind-config.yaml --kubeconfig .kind/kubeconfig --wait 120s
+
+# Jobs have immutable pod templates, so delete any existing ones before re-applying
+KUBECONFIG=.kind/kubeconfig kubectl delete jobs --all -n data-pipeline --ignore-not-found
 
 KUBECONFIG=.kind/kubeconfig kubectl apply -k k8s/overlays/local
 ```
