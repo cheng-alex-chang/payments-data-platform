@@ -2,21 +2,22 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TF_DIR="${ROOT_DIR}/infra/terraform/local-kind"
+CLUSTER_NAME="${CLUSTER_NAME:-data-pipeline}"
 KUBECONFIG_PATH="${ROOT_DIR}/.kind/kubeconfig"
 
-for command in docker terraform kind kubectl; do
+for command in docker kind kubectl; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "Missing required command: ${command}" >&2
     exit 1
   fi
 done
 
-cd "${TF_DIR}"
-terraform init
-terraform apply -auto-approve
-
 cd "${ROOT_DIR}"
+mkdir -p .kind
+kind get clusters | grep -qx "${CLUSTER_NAME}" \
+  || kind create cluster --name "${CLUSTER_NAME}" \
+       --config "${ROOT_DIR}/k8s/kind-config.yaml" \
+       --kubeconfig "${KUBECONFIG_PATH}" --wait 120s
 docker build -t local/data-pipeline-airflow:dev -f config/airflow/Dockerfile .
 docker build -t local/trino-exporter:dev config/trino-exporter
 cp drivers/postgresql-42.7.5.jar config/hive-metastore/postgresql-42.7.5.jar

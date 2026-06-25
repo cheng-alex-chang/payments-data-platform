@@ -6,7 +6,7 @@ This project keeps Docker Compose as the fastest local runtime and adds Kubernet
 
 The current Kubernetes path has a full local-platform manifest set:
 
-- Terraform creates a local `kind` cluster.
+- `scripts/k8s_up.sh` creates a local `kind` cluster (via the `kind` CLI).
 - Kustomize applies the `data-pipeline` namespace.
 - Kustomize generates shared ConfigMaps and Secrets from the existing repo config files and local overlay values.
 - Kubernetes defines source Postgres, metastore database, HDFS NameNode/DataNode, Hive Metastore, Trino, Zookeeper/Kafka/Kafka Connect, connector registration, Spark bronze/silver/gold job templates, Airflow, Prometheus/exporters, Grafana, and Metabase.
@@ -39,7 +39,6 @@ Docker Compose remains the fastest local runtime. Kubernetes is the local orches
 ## Prerequisites
 
 - Docker Desktop
-- Terraform
 - kind
 - kubectl
 
@@ -52,9 +51,8 @@ bash scripts/k8s_up.sh
 The script runs:
 
 ```bash
-cd infra/terraform/local-kind
-terraform init
-terraform apply -auto-approve
+kind create cluster --name data-pipeline \
+  --config k8s/kind-config.yaml --kubeconfig .kind/kubeconfig --wait 120s
 
 KUBECONFIG=.kind/kubeconfig kubectl apply -k k8s/overlays/local
 ```

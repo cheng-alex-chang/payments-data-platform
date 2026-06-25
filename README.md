@@ -21,7 +21,7 @@ The same medallion contract (bronze → silver → gold, CDC-aware) runs three w
 | Target | What it is | Entry point |
 |--------|------------|-------------|
 | **Docker Compose** | Fastest local runtime — the full stack with one command | `docker compose up -d` |
-| **Kubernetes (kind)** | The platform as Terraform + Kustomize manifests (HDFS, Hive Metastore, Trino, Kafka/Debezium, Spark, Airflow, observability) | `bash scripts/k8s_up.sh` |
+| **Kubernetes (kind)** | The platform as Kustomize manifests (HDFS, Hive Metastore, Trino, Kafka/Debezium, Spark, Airflow, observability) on a `kind` cluster | `bash scripts/k8s_up.sh` |
 | **Databricks (Lakeflow)** | Serverless Unity Catalog + Delta port as a Lakeflow Declarative Pipeline — Auto Loader, AUTO CDC, expectations — deployed via an Asset Bundle | [`databricks/`](databricks/README.md) |
 
 ## Architecture
@@ -70,8 +70,7 @@ config/trino/                  Trino config and Iceberg catalog
 config/trino-exporter/         Custom Trino REST -> Prometheus exporter
 databricks/                    Databricks Lakeflow (DLT) port + Asset Bundle
 docs/                          Design docs
-infra/terraform/local-kind/    Terraform-managed local kind cluster
-k8s/                           Kubernetes manifests and local overlay
+k8s/                           Kubernetes manifests, local overlay, and kind cluster config
 scripts/                       Helper scripts
 sql/trino/                     Trino validation SQL
 tests/                         Unit tests
@@ -128,7 +127,7 @@ pytest --cov --cov-report=term-missing
 
 ## Optional Local Kubernetes
 
-Docker Compose remains the fastest local runtime. A no-cost Terraform + Kubernetes path is also available for local infrastructure and orchestration workflows with `kind`. The Kubernetes overlay renders the full platform shape, including stateful databases, HDFS, Hive Metastore, Trino, Kafka/Connect, Spark job templates, Airflow, observability, and analytics UI workloads.
+Docker Compose remains the fastest local runtime. A no-cost Kubernetes path is also available for local infrastructure and orchestration workflows: `scripts/k8s_up.sh` creates a local `kind` cluster and applies the Kustomize overlay. The overlay renders the full platform shape, including stateful databases, HDFS, Hive Metastore, Trino, Kafka/Connect, Spark job templates, Airflow, observability, and analytics UI workloads.
 
 ```bash
 bash scripts/k8s_up.sh
