@@ -74,9 +74,9 @@ def to_debezium_envelope(payment):
 
 # COMMAND ----------
 
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
-spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.{VOLUME}")
-
+# The schema and volume are provisioned declaratively by
+# `infra/terraform/databricks` (terraform apply) and must already exist before
+# this workflow runs — this job no longer creates them.
 os.makedirs(SEED_DIR, exist_ok=True)
 target = f"{SEED_DIR}/seed_snapshot.jsonl"
 with open(target, "w", encoding="utf-8") as handle:

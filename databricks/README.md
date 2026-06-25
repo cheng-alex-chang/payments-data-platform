@@ -38,12 +38,16 @@ for what Databricks provides.
 | Hand-coded data-quality checks + DLQ | DLT **expectations** (`expect_all_or_drop`) tracked in the pipeline UI |
 | Iceberg on HDFS / Hive Metastore / Trino | **Delta** tables in **Unity Catalog** |
 | Airflow DAG | **Databricks Workflow** orchestrating seed → DLT pipeline → validate |
-| Terraform + kind | **Databricks Asset Bundle** (`databricks.yml`) |
+| `kind` cluster + Kustomize workloads | **Terraform** (`infra/terraform/databricks`) owns UC schema + volume + grants; the **Asset Bundle** (`databricks.yml`) owns the pipeline + Workflow |
 | Trino row-count validation | `validate_counts.py` |
 
 Tables publish to `workspace.analytics`:
 `payments_bronze`, `payments_silver`, `payment_metrics_gold`.
 The seed lands under the `workspace.analytics.landing` Volume.
+
+The `analytics` schema and `landing` volume themselves are created by
+**Terraform** (`infra/terraform/databricks`), not by application code — so
+`terraform apply` must run before the Workflow.
 
 ## Layout
 
@@ -83,7 +87,15 @@ databricks/
    databricks auth login --host https://<your-workspace>.cloud.databricks.com
    ```
 3. Set your workspace host in [databricks.yml](databricks.yml) (`targets.dev.workspace.host`).
-4. Deploy and run the bundle:
+4. Provision Unity Catalog governance (schema + volume) with Terraform first — the
+   seed job no longer self-creates them:
+   ```bash
+   terraform -chdir=../infra/terraform/databricks init
+   terraform -chdir=../infra/terraform/databricks apply
+   # Free Edition: grants are restricted, so they stay off (enable_grants=false).
+   # On a standard workspace, add: -var 'enable_grants=true'
+   ```
+5. Deploy and run the bundle:
    ```bash
    cd databricks
    databricks bundle validate

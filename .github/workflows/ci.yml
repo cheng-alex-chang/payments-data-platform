@@ -60,3 +60,21 @@ jobs:
         if: env.DATABRICKS_HOST != ''
         working-directory: databricks
         run: databricks bundle validate -t dev
+
+  terraform:
+    # Formats + validates the Databricks governance Terraform. `validate` needs
+    # only the provider (downloaded by `init -backend=false`), no credentials, so
+    # the job is a real check out-of-the-box.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt
+        run: terraform -chdir=infra/terraform/databricks fmt -check -recursive
+
+      - name: Terraform init + validate
+        run: |
+          terraform -chdir=infra/terraform/databricks init -backend=false
+          terraform -chdir=infra/terraform/databricks validate

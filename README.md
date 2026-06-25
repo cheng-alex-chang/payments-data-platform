@@ -70,6 +70,7 @@ config/trino/                  Trino config and Iceberg catalog
 config/trino-exporter/         Custom Trino REST -> Prometheus exporter
 databricks/                    Databricks Lakeflow (DLT) port + Asset Bundle
 docs/                          Design docs
+infra/terraform/databricks/    Terraform for Databricks Unity Catalog governance (schema, volume, grants)
 k8s/                           Kubernetes manifests, local overlay, and kind cluster config
 scripts/                       Helper scripts
 sql/trino/                     Trino validation SQL
@@ -150,13 +151,18 @@ The Kubernetes path has been verified end-to-end locally — Debezium connector 
 
 The medallion is also ported to **Databricks** as a serverless **Lakeflow Declarative Pipeline** on Unity Catalog + Delta: Auto Loader ingestion, `apply_changes` (AUTO CDC) for the silver upsert/delete, and expectations for data quality — deployed as a Databricks Asset Bundle and orchestrated by a Workflow (seed → pipeline → validate).
 
+Governance (the `analytics` schema and the `landing` volume) is provisioned declaratively with **Terraform** — a clean infra-vs-workload split: Terraform owns the Unity Catalog objects, the Asset Bundle owns the pipeline and Workflow. Terraform must `apply` first, because the seed job no longer self-creates the schema/volume:
+
 ```bash
+terraform -chdir=infra/terraform/databricks init
+terraform -chdir=infra/terraform/databricks apply   # creates workspace.analytics + landing volume
+
 cd databricks
 databricks bundle deploy -t dev
 databricks bundle run payments_pipeline -t dev
 ```
 
-Verified on Databricks Free Edition: the Delta tables reconcile 124 → 124 → 124 and all silver expectations report 124 passed / 0 failed. See [databricks/README.md](databricks/README.md) for setup, the architecture diagram, and design notes.
+Verified on Databricks Free Edition: the Delta tables reconcile 124 → 124 → 124 and all silver expectations report 124 passed / 0 failed. **Free Edition caveat:** `workspace` is a built-in catalog (not created by Terraform) and grants are restricted, so the Terraform scope is the schema + volume; the full grants showcase (`-var 'enable_grants=true'`) needs a standard workspace. See [databricks/README.md](databricks/README.md) for setup, the architecture diagram, and design notes.
 
 ## Airflow Pipeline
 
