@@ -147,8 +147,13 @@ spec:
             - name: AIRFLOW__CORE__LOAD_EXAMPLES
               value: "false"
           volumeMounts:
+            # Mount the single DAG file via subPath so Kubernetes materializes a plain
+            # file, not a ConfigMap directory. A directory mount carries the atomic-update
+            # `..data` symlink, which Airflow's DAG walker follows into a "recursive loop"
+            # (find_path_from_directory) that crashloops the DagFileProcessor.
             - name: airflow-dags
-              mountPath: /opt/airflow/dags
+              mountPath: /opt/airflow/dags/payments_pipeline.py
+              subPath: payments_pipeline.py
             - name: pipeline-scripts
               mountPath: /opt/airflow/scripts
             - name: trino-validation-sql
@@ -256,8 +261,13 @@ spec:
             - name: AIRFLOW__METRICS__STATSD_PREFIX
               value: airflow
           volumeMounts:
+            # Mount the single DAG file via subPath so Kubernetes materializes a plain
+            # file, not a ConfigMap directory. A directory mount carries the atomic-update
+            # `..data` symlink, which Airflow's DAG walker follows into a "recursive loop"
+            # (find_path_from_directory) that crashloops the DagFileProcessor.
             - name: airflow-dags
-              mountPath: /opt/airflow/dags
+              mountPath: /opt/airflow/dags/payments_pipeline.py
+              subPath: payments_pipeline.py
             - name: pipeline-scripts
               mountPath: /opt/airflow/scripts
             - name: trino-validation-sql
@@ -346,8 +356,13 @@ spec:
             - name: AIRFLOW__METRICS__STATSD_PREFIX
               value: airflow
           volumeMounts:
+            # Mount the single DAG file via subPath so Kubernetes materializes a plain
+            # file, not a ConfigMap directory. A directory mount carries the atomic-update
+            # `..data` symlink, which Airflow's DAG walker follows into a "recursive loop"
+            # (find_path_from_directory) that crashloops the DagFileProcessor.
             - name: airflow-dags
-              mountPath: /opt/airflow/dags
+              mountPath: /opt/airflow/dags/payments_pipeline.py
+              subPath: payments_pipeline.py
             - name: pipeline-scripts
               mountPath: /opt/airflow/scripts
             - name: trino-validation-sql

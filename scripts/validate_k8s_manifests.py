@@ -119,6 +119,23 @@ def find_airflow_migration_wait_gaps(objects: list[K8sObject]) -> list[str]:
     return sorted(gaps)
 
 
+def find_airflow_dag_directory_mounts(objects: list[K8sObject]) -> list[str]:
+    # Airflow's DAG walker follows the ConfigMap atomic-update `..data` symlink and crashes
+    # the DagFileProcessor with a recursive-loop error, so the dags ConfigMap must be mounted
+    # file-by-file via subPath, not as a directory at /opt/airflow/dags.
+    airflow_workloads = {"airflow-init", "airflow-webserver", "airflow-scheduler"}
+    gaps: list[str] = []
+    for obj in objects:
+        if obj.name not in airflow_workloads:
+            continue
+        pod_spec = obj.raw.get("spec", {}).get("template", {}).get("spec", {})
+        for container in pod_spec.get("containers", []):
+            for mount in container.get("volumeMounts", []):
+                if mount.get("name") == "airflow-dags" and "subPath" not in mount:
+                    gaps.append(f"{obj.kind}/{obj.name}/{container.get('name')}")
+    return sorted(gaps)
+
+
 def find_dead_service_precondition_envs(objects: list[K8sObject]) -> list[str]:
     gaps: list[str] = []
     for obj in objects:
@@ -201,6 +218,10 @@ def validate(objects: list[K8sObject]) -> list[str]:
     service_precondition_gaps = find_dead_service_precondition_envs(objects)
     if service_precondition_gaps:
         errors.append(f"Containers use ignored SERVICE_PRECONDITION env: {service_precondition_gaps}")
+
+    airflow_dag_mount_gaps = find_airflow_dag_directory_mounts(objects)
+    if airflow_dag_mount_gaps:
+        errors.append(f"Airflow DAG ConfigMap must be mounted via subPath, not as a directory: {airflow_dag_mount_gaps}")
 
     spark_mount_gaps = find_spark_hadoop_directory_mounts(objects)
     if spark_mount_gaps:

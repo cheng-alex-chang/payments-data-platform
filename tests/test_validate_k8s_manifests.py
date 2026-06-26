@@ -134,6 +134,43 @@ spec:
     assert gaps == ["StatefulSet/datanode/datanode"]
 
 
+def test_find_airflow_dag_directory_mounts_flags_missing_subpath() -> None:
+    manifest = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  namespace: data-pipeline
+spec:
+  template:
+    spec:
+      containers:
+        - name: scheduler
+          volumeMounts:
+            - name: airflow-dags
+              mountPath: /opt/airflow/dags
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-webserver
+  namespace: data-pipeline
+spec:
+  template:
+    spec:
+      containers:
+        - name: webserver
+          volumeMounts:
+            - name: airflow-dags
+              mountPath: /opt/airflow/dags/payments_pipeline.py
+              subPath: payments_pipeline.py
+"""
+
+    gaps = module.find_airflow_dag_directory_mounts(module.parse_objects(manifest))
+
+    assert gaps == ["Deployment/airflow-scheduler/scheduler"]
+
+
 def test_find_spark_hadoop_directory_mounts_flags_conf_replacement() -> None:
     manifest = """
 apiVersion: batch/v1
