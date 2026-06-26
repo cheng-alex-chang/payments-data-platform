@@ -29,7 +29,6 @@ REQUIRED_OBJECTS = {
     ("Job", "hdfs-init"),
     ("Deployment", "hive-metastore"),
     ("Deployment", "trino"),
-    ("Deployment", "zookeeper"),
     ("Deployment", "kafka-connect"),
     ("Deployment", "airflow-webserver"),
     ("Deployment", "airflow-scheduler"),

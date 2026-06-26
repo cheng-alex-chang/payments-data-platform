@@ -9,7 +9,7 @@ The current Kubernetes path has a full local-platform manifest set:
 - `scripts/k8s_up.sh` creates a local `kind` cluster (via the `kind` CLI).
 - Kustomize applies the `data-pipeline` namespace.
 - Kustomize generates shared ConfigMaps and Secrets from the existing repo config files and local overlay values.
-- Kubernetes defines source Postgres, metastore database, HDFS NameNode/DataNode, Hive Metastore, Trino, Zookeeper/Kafka/Kafka Connect, connector registration, Spark bronze/silver/gold job templates, Airflow, Prometheus/exporters, Grafana, and Metabase.
+- Kubernetes defines source Postgres, metastore database, HDFS NameNode/DataNode, Hive Metastore, Trino, Kafka (KRaft)/Kafka Connect, connector registration, Spark bronze/silver/gold job templates, Airflow, Prometheus/exporters, Grafana, and Metabase.
 - An `hdfs-init` Job prepares local warehouse and checkpoint directories for Spark writes.
 - Connector registration and Spark job manifests are suspended by default so they do not run before their dependencies are Ready.
 

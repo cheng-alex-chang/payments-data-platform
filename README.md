@@ -91,7 +91,7 @@ tests/                         Unit tests
 docker compose up -d
 ```
 
-All long-running services use `restart: unless-stopped` and expose healthchecks (Kafka, Zookeeper, NameNode, DataNode, Trino, Airflow, Postgres variants). Dependent services wait on `condition: service_healthy` before starting, so the stack self-recovers from individual container crashes without manual intervention.
+All long-running services use `restart: unless-stopped` and expose healthchecks (Kafka, NameNode, DataNode, Trino, Airflow, Postgres variants). Dependent services wait on `condition: service_healthy` before starting, so the stack self-recovers from individual container crashes without manual intervention.
 
 ### Register or refresh the Debezium connector
 
