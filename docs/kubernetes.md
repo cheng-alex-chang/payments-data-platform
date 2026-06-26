@@ -31,6 +31,7 @@ The Kubernetes path has been smoke-tested locally through:
 - HDFS warehouse/checkpoint initialization
 - source Postgres seed validation (`124` payments)
 - Debezium connector registration with connector and task `RUNNING`
+- Airflow scheduler parsing the `payments_pipeline` DAG with no import errors (the dags ConfigMap is mounted via `subPath`, so the walker never follows the `..data` symlink into a recursive loop)
 - Bronze, Silver, and Gold Spark Jobs completing successfully
 - Trino queries over Iceberg returning Bronze `124`, Silver `124`, and Gold total payments `124`
 
