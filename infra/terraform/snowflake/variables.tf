@@ -1,0 +1,47 @@
+variable "snowflake_admin_role" {
+  description = "Snowflake role Terraform runs as. Needs CREATE INTEGRATION (ACCOUNTADMIN on a trial)."
+  type        = string
+  default     = "ACCOUNTADMIN"
+}
+
+variable "aws_region" {
+  description = "AWS region for the S3 lake bucket."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "database" {
+  description = "Snowflake database holding the RAW + ANALYTICS schemas."
+  type        = string
+  default     = "PAYMENTS"
+}
+
+variable "warehouse" {
+  description = "Virtual warehouse for the ELT. XS + auto-suspend to stay near $0 on a trial."
+  type        = string
+  default     = "PAYMENTS_WH"
+}
+
+variable "etl_role" {
+  description = "Functional role granted on the database/warehouse for the pipeline."
+  type        = string
+  default     = "PAYMENTS_ETL_ROLE"
+}
+
+variable "s3_bucket" {
+  description = "Globally-unique S3 bucket name for the raw lake. Override per account."
+  type        = string
+  default     = "payments-lake-changeme"
+}
+
+variable "stage_name" {
+  description = "External stage name the loader/DAG COPY INTO from."
+  type        = string
+  default     = "PAYMENTS_LAKE_STAGE"
+}
+
+variable "iam_role_name" {
+  description = "Name of the AWS IAM role Snowflake assumes to read the bucket."
+  type        = string
+  default     = "snowflake-payments-lake"
+}
