@@ -69,8 +69,13 @@ def run_validation(conn: Any, *, sql_dir: Path = SQL_DIR) -> list[tuple]:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run the Snowflake SQL ELT transforms.")
-    parser.add_argument(
-        "--validate-only", action="store_true", help="Skip transforms; just run validate.sql"
+    # The DAG runs the models and the validation as two discrete, separately-retryable tasks.
+    stage = parser.add_mutually_exclusive_group()
+    stage.add_argument(
+        "--transform-only", action="store_true", help="Run the models; skip validate.sql"
+    )
+    stage.add_argument(
+        "--validate-only", action="store_true", help="Skip the models; just run validate.sql"
     )
     parser.add_argument(
         "--dry-run",
@@ -83,15 +88,17 @@ def main(argv: list[str] | None = None) -> None:
         if not args.validate_only:
             for name in TRANSFORM_FILES:
                 print(f"transform: {name}")
-        print(f"validate:  {VALIDATE_FILE}")
+        if not args.transform_only:
+            print(f"validate:  {VALIDATE_FILE}")
         return
 
     conn = connect_from_env()
     try:
         if not args.validate_only:
             run_transforms(conn)
-        for row in run_validation(conn):
-            print(row)
+        if not args.transform_only:
+            for row in run_validation(conn):
+                print(row)
     finally:
         conn.close()
 

@@ -55,3 +55,26 @@ def test_stage_dataset_writes_partitioned_object(s3_client) -> None:  # noqa: AN
 
     body = s3_client.get_object(Bucket=BUCKET, Key=key)["Body"].read().decode("utf-8")
     assert json.loads(body.strip())["currency"] == "EUR"
+
+
+def test_main_stages_only_requested_datasets(s3_client, monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(module, "s3_client_from_env", lambda: s3_client)
+    monkeypatch.setitem(
+        module.DATASET_FACTORIES,
+        "fx_rates",
+        lambda: [{"rate_date": "2026-06-29", "currency": "EUR", "rate_to_usd": 1.08}],
+    )
+    payments_called = {"v": False}
+
+    def payments_factory() -> list:
+        payments_called["v"] = True  # must NOT run when only fx_rates is requested
+        return []
+
+    monkeypatch.setitem(module.DATASET_FACTORIES, "payments", payments_factory)
+
+    module.main(["--bucket", BUCKET, "--datasets", "fx_rates", "--run-date", "2026-06-29"])
+
+    keys = [obj["Key"] for obj in s3_client.list_objects_v2(Bucket=BUCKET).get("Contents", [])]
+    assert any("raw/fx_rates/dt=2026-06-29/" in k for k in keys)  # honors --run-date partition
+    assert not any("raw/payments/" in k for k in keys)
+    assert payments_called["v"] is False  # the unselected source never extracted

@@ -89,21 +89,40 @@ def _payment_records() -> Iterable[dict]:
         conn.close()
 
 
+# dataset name -> zero-arg factory. Called lazily so staging one source never triggers the
+# other's extract (e.g. staging fx_rates alone won't open a Postgres connection).
+DATASET_FACTORIES = {
+    "fx_rates": _fx_records,
+    "payments": _payment_records,
+}
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Stage FX rates + payments to S3.")
     parser.add_argument("--bucket", default=os.getenv("S3_BUCKET"), help="Target S3 bucket")
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        choices=sorted(DATASET_FACTORIES),
+        default=sorted(DATASET_FACTORIES),
+        help="Which datasets to extract + stage (default: all). Lets the DAG run them in parallel.",
+    )
+    parser.add_argument(
+        "--run-date",
+        default=None,
+        help="Partition date YYYY-MM-DD (default: today). The DAG passes Airflow's {{ ds }}.",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Serialize from real sources and print a sample, without touching S3",
     )
     args = parser.parse_args(argv)
-
-    datasets = {"fx_rates": _fx_records(), "payments": _payment_records()}
+    run_date = dt.date.fromisoformat(args.run_date) if args.run_date else None
 
     if args.dry_run:
-        for name, records in datasets.items():
-            body, count = serialize_jsonl(records)
+        for name in args.datasets:
+            body, count = serialize_jsonl(DATASET_FACTORIES[name]())
             preview = body.decode("utf-8").splitlines()[:2]
             LOGGER.info("[dry-run] %s: %d rows, %d bytes", name, count, len(body))
             for line in preview:
@@ -113,8 +132,8 @@ def main(argv: list[str] | None = None) -> None:
     if not args.bucket:
         raise SystemExit("--bucket (or S3_BUCKET) is required when not in --dry-run")
     client = s3_client_from_env()
-    for name, records in datasets.items():
-        stage_dataset(client, args.bucket, name, records)
+    for name in args.datasets:
+        stage_dataset(client, args.bucket, name, DATASET_FACTORIES[name](), run_date=run_date)
 
 
 if __name__ == "__main__":  # pragma: no cover

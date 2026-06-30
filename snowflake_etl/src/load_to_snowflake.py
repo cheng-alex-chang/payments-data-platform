@@ -55,7 +55,7 @@ def copy_into_sql(
     table: str,
     stage: str,
     dataset: str,
-    run_date: dt.date,
+    run_date: dt.date | str,
     *,
     prefix: str = DEFAULT_PREFIX,
 ) -> str:
@@ -65,8 +65,12 @@ def copy_into_sql(
     (``@<stage>/raw/<dataset>/dt=<run_date>/``). ``$1`` is the whole JSON object parsed as a
     VARIANT; ``METADATA$FILENAME`` is captured for lineage. ``ON_ERROR = ABORT_STATEMENT``
     means a single malformed row fails the load loudly rather than silently dropping data.
+
+    ``run_date`` may be a ``date`` (CLI/integration path) or a string -- the Airflow DAG passes
+    the ``"{{ ds }}"`` template literal so SnowflakeOperator renders the partition at runtime.
     """
-    location = f"@{stage}/{prefix}/{dataset}/dt={run_date.isoformat()}/"
+    run_date_str = run_date.isoformat() if isinstance(run_date, dt.date) else run_date
+    location = f"@{stage}/{prefix}/{dataset}/dt={run_date_str}/"
     return (
         f"COPY INTO {table} (raw, source_file)\n"
         f"FROM (\n"

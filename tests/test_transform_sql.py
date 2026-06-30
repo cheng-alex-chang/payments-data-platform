@@ -77,3 +77,28 @@ def test_run_validation_returns_rows_when_all_pass() -> None:
     conn.cursor.return_value = cursor
 
     assert module.run_validation(conn) == rows
+
+
+def test_main_transform_only_runs_models_and_skips_validation() -> None:
+    with (
+        mock.patch.object(module, "connect_from_env", return_value=mock.MagicMock()) as factory,
+        mock.patch.object(module, "run_transforms") as run_transforms,
+        mock.patch.object(module, "run_validation") as run_validation,
+    ):
+        module.main(["--transform-only"])
+
+    run_transforms.assert_called_once()
+    run_validation.assert_not_called()
+    factory.return_value.close.assert_called_once()  # connection closed even on the split path
+
+
+def test_main_validate_only_skips_models() -> None:
+    with (
+        mock.patch.object(module, "connect_from_env", return_value=mock.MagicMock()),
+        mock.patch.object(module, "run_transforms") as run_transforms,
+        mock.patch.object(module, "run_validation", return_value=[]) as run_validation,
+    ):
+        module.main(["--validate-only"])
+
+    run_transforms.assert_not_called()
+    run_validation.assert_called_once()

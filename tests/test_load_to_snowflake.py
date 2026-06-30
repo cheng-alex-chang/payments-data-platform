@@ -28,6 +28,12 @@ def test_copy_into_sql_targets_partitioned_stage_path() -> None:
     assert "ON_ERROR = ABORT_STATEMENT" in sql                   # fail loud on bad rows
 
 
+def test_copy_into_sql_accepts_templated_run_date() -> None:
+    # The Airflow DAG passes "{{ ds }}" so SnowflakeOperator renders the partition at runtime.
+    sql = module.copy_into_sql("RAW.RAW_PAYMENTS", "PAYMENTS_LAKE_STAGE", "payments", "{{ ds }}")
+    assert "@PAYMENTS_LAKE_STAGE/raw/payments/dt={{ ds }}/" in sql
+
+
 def test_sum_rows_loaded_counts_loaded_skips_already_loaded() -> None:
     result = [
         ("fx-a.jsonl", "LOADED", 1536, 1536, 0, None),
