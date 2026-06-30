@@ -110,6 +110,34 @@ init_hdfs → validate_connector → bronze_load → silver_transform
 
 The DAG has no schedule (`schedule=None`) and is triggered manually or via the Airflow API. `max_active_runs=1` prevents concurrent runs from conflicting on the shared Iceberg tables.
 
+## Snowflake FX ELT (batch + cloud warehouse)
+
+A second pipeline runs the batch-into-a-warehouse paradigm over the same payments domain, adding a second source type (a pull-based REST API) and USD normalization. It is **ELT**, not ETL: load raw and untyped first, transform in the warehouse.
+
+```
+FX REST API (ECB/Frankfurter) ─┐
+                               ├─ stage_to_s3 → S3 raw/<dataset>/dt=<date>/*.jsonl
+Postgres payments ─────────────┘                    └─ COPY INTO → RAW.* (VARIANT)
+                                                          └─ Snowflake SQL → ANALYTICS.*
+```
+
+### Layer contracts
+
+- **RAW (`COPY INTO` VARIANT).** Each S3 JSON line lands verbatim in a single `VARIANT` column with `source_file` / `loaded_at` lineage. No reshaping at load time. Idempotent: `CREATE TABLE IF NOT EXISTS` plus COPY's load history (a file already loaded is skipped), so re-triggering the DAG never double-loads.
+- **Staging (views).** Type the VARIANT into columns and `QUALIFY ROW_NUMBER()`-dedup to the latest version per key — replay-safe, the warehouse analogue of the silver dedup. `amount` is cast back from its exact string form to `NUMBER(12,2)` without passing through a float.
+- **`dim_fx_rates` (table).** One `rate_to_usd` per currency per **calendar** day. ECB publishes business days only, so a calendar spine × currencies is left-joined to actual rates and **forward-filled** (`LAST_VALUE ... IGNORE NULLS`, with a backward `FIRST_VALUE` for the leading edge); `is_filled` flags carried days. Guarantees every payment date resolves to a rate.
+- **`fct_payments_usd` (table).** `LEFT JOIN` payments to the dimension on `(currency, created_date)`; `usd_amount = ROUND(amount × rate_to_usd, 2)`. LEFT (not INNER) so an unmatched payment survives with a NULL `usd_amount` for validation to catch, rather than being silently dropped.
+- **`agg_payments_by_currency` (table).** Monthly USD volume by currency/country — deliberately a different grain from the lakehouse's hourly operational gold. The two pipelines are two consumption tiers (operational vs. financial), not duplicates.
+- **`validate` (gates).** Named PASS/FAIL checks the orchestrator asserts: fact reconciles to payments (N == N), no unmatched USD amount, no null/zero FX rate, USD identity (USD payments convert 1:1). The DAG's validate task raises on any FAIL.
+
+### Orchestration & governance
+
+The DAG `snowflake_fx_etl` stages the two sources to S3 in parallel (TaskFlow `@task`), fans into the RAW load and the SQL transform (`SnowflakeOperator` over a managed `snowflake_default` connection), and ends on the validation gate. Terraform (`infra/terraform/snowflake/`) owns the database, schemas, warehouse, role/grants, and the AWS↔Snowflake storage integration + external stage — the same infra-vs-workload split as the Databricks port.
+
+### Known limitations
+
+Tracked in [production-readiness.md](production-readiness.md): password auth (→ key-pair), env-based AWS creds (→ IAM roles), unpinned dependencies, the split credential mechanism in the DAG, FX-source resilience, and remote Terraform state. The live load is run once against a Snowflake 30-day trial + S3 Free Tier for evidence, then torn down; the code persists and is otherwise verified offline (mocked S3, fake cursor, `terraform validate`).
+
 ## Monitoring
 
 Prometheus scrapes three targets:

@@ -14,6 +14,8 @@ with:
 
 See [docs/design.md](docs/design.md) for layer contracts, incremental processing, CDC delete handling, and known limitations.
 
+A second, **batch + cloud-warehouse** pipeline extends the same domain: a pull-based **FX-rates REST API** plus the payments table, staged through **AWS S3** and loaded into a **Snowflake ELT** that normalizes payments to USD for cross-currency analytics — the operational lakehouse and the financial warehouse, side by side. See [snowflake_etl/](snowflake_etl/README.md).
+
 ## Deployment targets
 
 The same medallion contract (bronze → silver → gold, CDC-aware) runs three ways:
@@ -71,8 +73,10 @@ config/trino-exporter/         Custom Trino REST -> Prometheus exporter
 databricks/                    Databricks Lakeflow (DLT) port + Asset Bundle
 docs/                          Design docs
 infra/terraform/databricks/    Terraform for Databricks Unity Catalog governance (schema, volume, grants)
+infra/terraform/snowflake/     Terraform for Snowflake + S3 governance (warehouse, role/grants, storage integration, stage)
 k8s/                           Kubernetes manifests, local overlay, and kind cluster config
 scripts/                       Helper scripts
+snowflake_etl/                 Snowflake FX ELT: REST-API + Postgres -> S3 -> Snowflake (extractors, loader, SQL models, DAG)
 sql/trino/                     Trino validation SQL
 tests/                         Unit tests
 ```
@@ -163,6 +167,19 @@ databricks bundle run payments_pipeline -t dev
 ```
 
 Verified on Databricks Free Edition: the Delta tables reconcile 124 → 124 → 124 and all silver expectations report 124 passed / 0 failed. **Free Edition caveat:** `workspace` is a built-in catalog (not created by Terraform) and grants are restricted, so the Terraform scope is the schema + volume; the full grants showcase (`-var 'enable_grants=true'`) needs a standard workspace. See [databricks/README.md](databricks/README.md) for setup, the architecture diagram, and design notes.
+
+## Snowflake FX ELT (batch + cloud warehouse)
+
+A second ingestion pipeline runs the other dominant paradigm — **batch into a cloud warehouse** — over the same payments domain. A pull-based **FX-rates REST API** (Frankfurter / ECB) and the Postgres payments table are staged to **AWS S3** as date-partitioned JSON, loaded into **Snowflake** `RAW` VARIANT tables with `COPY INTO`, then transformed in **Snowflake SQL (ELT)** that forward-fills weekend/holiday FX gaps and normalizes every payment to USD:
+
+```text
+FX REST API + Postgres → S3 (raw/<dataset>/dt=…) → Snowflake RAW (VARIANT)
+  → stg_* → dim_fx_rates (forward-fill) → fct_payments_usd (amount × rate) → agg_payments_by_currency
+```
+
+It's orchestrated by an Airflow DAG (`airflow/dags/snowflake_fx_etl.py`) using TaskFlow `@task` for the S3 staging and `SnowflakeOperator` (via a managed `snowflake_default` connection) for the SQL, and governed by **Terraform** (`infra/terraform/snowflake/`): database, RAW/ANALYTICS schemas, an XS auto-suspend warehouse, a least-privilege role, and the AWS↔Snowflake wiring (S3 bucket + storage integration + external stage). This is a deliberate **two-tier** design, not a duplicate of the lakehouse: the lakehouse serves *hourly operational* analytics; Snowflake serves *monthly, USD-normalized* financials.
+
+Everything is verifiable offline (mocked S3, fake Snowflake cursor, `terraform validate`); the live load against a Snowflake 30-day trial + S3 Free Tier is a one-session activity that's then torn down. See **[snowflake_etl/README.md](snowflake_etl/README.md)** for the architecture, run commands, test tiers, and trial caveat, and [docs/production-readiness.md](docs/production-readiness.md) for the hardening backlog.
 
 ## Airflow Pipeline
 
