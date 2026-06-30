@@ -87,16 +87,31 @@ terraform -chdir=infra/terraform/snowflake validate
   SNOWFLAKE_PASSWORD=… SNOWFLAKE_STAGE=PAYMENTS_LAKE_STAGE pytest -m integration
   ```
 
-## Cloud run (deferred) + teardown
+## Cloud run + teardown
 
 The live end-to-end (real Snowflake 30-day trial + AWS S3 Free Tier) is a one-session activity:
 
 ```bash
+# Terraform's 1.x snowflake provider wants the account SPLIT (the connector takes it combined):
+export SNOWFLAKE_ORGANIZATION_NAME=ORG  SNOWFLAKE_ACCOUNT_NAME=ACCT   # halves of ORG-ACCT
+export SNOWFLAKE_USER=…  SNOWFLAKE_PASSWORD=…  AWS_ACCESS_KEY_ID=…  AWS_SECRET_ACCESS_KEY=…
+export TF_VAR_s3_bucket=your-unique-bucket  TF_VAR_aws_region=us-east-1
 terraform -chdir=infra/terraform/snowflake apply  # db, schemas, warehouse, role, bucket, integration, stage
-# set S3_BUCKET / SNOWFLAKE_* + the snowflake_default Airflow connection, then trigger the DAG
-# expected: fct_payments_usd rows == payments; agg shows monthly FX-adjusted USD volume
+
+# Then run the pipeline (or trigger the DAG). The connector uses the combined SNOWFLAKE_ACCOUNT:
+export SNOWFLAKE_ACCOUNT=ORG-ACCT  S3_BUCKET=$TF_VAR_s3_bucket  SNOWFLAKE_ROLE=ACCOUNTADMIN
+python -m snowflake_etl.src.stage_to_s3 --bucket $S3_BUCKET --run-date $(date +%F)
+python -m snowflake_etl.src.load_to_snowflake --run-date $(date +%F)
+python -m snowflake_etl.src.transform
+
 terraform -chdir=infra/terraform/snowflake destroy   # tear down — net ~$0
 ```
+
+**Verified live** (Snowflake trial + S3 Free Tier): `stage → COPY INTO → ELT` loaded **50,004**
+payments + 1,536 FX rows; all four validation gates pass (`fct_payments_usd` reconciles
+50,004 == 50,004, no unmatched USD, no null/zero rate, USD identity holds); total normalized
+volume **$13,498,004.56** across 6 currencies, with the monthly aggregate showing real ECB FX
+drift. Torn down afterward — net ~$0.
 
 **Trial caveat:** the Snowflake trial expires after 30 days, so the live load is run once for
 evidence then torn down; the code persists. That's why the Snowflake integration test is gated
