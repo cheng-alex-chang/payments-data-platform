@@ -145,7 +145,7 @@ bash scripts/k8s_down.sh
 
 See [docs/kubernetes.md](docs/kubernetes.md) for the current Kubernetes scope, verification commands, and remaining runtime caveats.
 
-The Kubernetes path has been verified end-to-end locally — Debezium connector registration, Bronze/Silver/Gold Spark Jobs, and Trino row-count validation all reconcile (124 → 124 → 124).
+The Kubernetes path has been verified end-to-end locally — Debezium connector registration, Bronze/Silver/Gold Spark Jobs, and Trino row-count validation all reconcile (bronze = silver = gold, currently ~50k payments over 12 months).
 
 ## Databricks (Lakeflow Declarative Pipeline)
 

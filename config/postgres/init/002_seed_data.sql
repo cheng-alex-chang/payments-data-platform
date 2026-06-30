@@ -20,21 +20,27 @@ VALUES
     (1004, 3, 504, 44.25, 'EUR', 'card', 'refunded', 'DE', NOW() - INTERVAL '6 hour', NOW() - INTERVAL '2 hour')
 ON CONFLICT (payment_id) DO NOTHING;
 
+-- Synthetic payments generator. Scale = the generate_series upper bound below; the time
+-- spread (% 8760 hours = 365 days) gives 12 months of history for FX-over-time analysis and
+-- meaningful Iceberg/Snowflake partition pruning. Deterministic (no RNG) so reruns reproduce
+-- the same dataset.
 WITH generated_payments AS (
     SELECT
         2000 + gs AS payment_id,
         ((gs - 1) % 10) + 1 AS merchant_id,
-        700 + gs AS shopper_id,
+        -- repeat shoppers (~6 payments each) so the SHA-256 PII-hash dedup has real fan-in
+        700 + ((gs - 1) % 8000) + 1 AS shopper_id,
         ROUND((25 + ((gs * 17) % 475) + (((gs * 13) % 100)::NUMERIC / 100)), 2)::NUMERIC(12, 2) AS amount,
-        (ARRAY['EUR', 'USD', 'GBP', 'CAD'])[((gs - 1) % 4) + 1] AS currency,
+        (ARRAY['EUR', 'USD', 'GBP', 'CAD', 'AUD', 'CHF'])[((gs - 1) % 6) + 1] AS currency,
         (ARRAY['card', 'paypal', 'apple_pay', 'bank_transfer', 'google_pay'])[((gs - 1) % 5) + 1] AS payment_method,
         (ARRAY['authorized', 'failed', 'authorized', 'pending', 'refunded', 'authorized', 'chargeback', 'cancelled'])[((gs - 1) % 8) + 1] AS payment_status,
-        (ARRAY['NL', 'US', 'DE', 'BE', 'FR', 'GB', 'CA', 'ES'])[((gs - 1) % 8) + 1] AS country_code,
+        (ARRAY['NL', 'US', 'DE', 'BE', 'FR', 'GB', 'CA', 'ES', 'AU', 'CH'])[((gs - 1) % 10) + 1] AS country_code,
+        -- spread created_at across the last 12 months (8760 hours), with intra-hour jitter
         (
-            date_trunc('hour', NOW() - (((gs - 1) % 168) || ' hours')::INTERVAL)
+            date_trunc('hour', NOW() - (((gs - 1) % 8760) || ' hours')::INTERVAL)
             - ((((gs - 1) % 4) * 15) || ' minutes')::INTERVAL
         ) AS created_at
-    FROM generate_series(1, 120) AS gs
+    FROM generate_series(1, 50000) AS gs
 )
 INSERT INTO payments (
     payment_id,
@@ -80,6 +86,6 @@ SELECT
     END,
     updated_at + INTERVAL '30 minutes'
 FROM payments
-WHERE payment_id BETWEEN 2001 AND 2120
+WHERE payment_id >= 2001
   AND payment_status = 'refunded'
 ON CONFLICT (refund_id) DO NOTHING;

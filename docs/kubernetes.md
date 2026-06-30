@@ -29,11 +29,11 @@ The Kubernetes path has been smoke-tested locally through:
 
 - all core pods Ready in the `data-pipeline` namespace
 - HDFS warehouse/checkpoint initialization
-- source Postgres seed validation (`124` payments)
+- source Postgres seed validation (row counts reconcile end to end)
 - Debezium connector registration with connector and task `RUNNING`
 - Airflow scheduler parsing the `payments_pipeline` DAG with no import errors (the dags ConfigMap is mounted via `subPath`, so the walker never follows the `..data` symlink into a recursive loop)
 - Bronze, Silver, and Gold Spark Jobs completing successfully
-- Trino queries over Iceberg returning Bronze `124`, Silver `124`, and Gold total payments `124`
+- Trino queries over Iceberg where Bronze, Silver, and Gold total payments reconcile to the same row count
 
 Docker Compose remains the fastest local runtime. Kubernetes is the local orchestration path for practicing cluster operations and migration patterns.
 
@@ -93,7 +93,7 @@ kubectl exec -n data-pipeline postgres-0 -- \
   psql -U dataeng -d payments -c "SELECT COUNT(*) AS payments_count FROM payments;"
 ```
 
-The expected count is `124` payments from the seed scripts.
+The seed loads a configurable volume (default ~50k payments spread over 12 months); Bronze, Silver, and Gold then reconcile to the same count.
 
 Connector registration and Spark job templates are suspended by default. Start or recreate them only after their dependencies are Ready.
 
