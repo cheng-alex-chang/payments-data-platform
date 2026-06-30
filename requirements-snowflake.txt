@@ -1,0 +1,6 @@
+# Heavy driver needed ONLY for the live Snowflake load + the gated integration tests
+# (tests/integration/test_snowflake_load.py). Kept out of requirements-ci.txt on purpose:
+# the unit tests import it lazily / via importorskip, and CI has no Snowflake creds, so
+# installing it there would just slow CI without running anything. Install in the cloud
+# session: pip install -r requirements-snowflake.txt
+snowflake-connector-python
