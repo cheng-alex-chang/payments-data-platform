@@ -44,11 +44,11 @@ Orchestrated by Airflow (`airflow/dags/snowflake_fx_etl.py`), governed by Terraf
 | Extract | [src/extract_fx_rates.py](src/extract_fx_rates.py), [src/extract_payments.py](src/extract_payments.py) | FX from a keyless REST API (inverts ECB quote → `rate_to_usd`); payments via a server-side Postgres cursor |
 | Stage | [src/stage_to_s3.py](src/stage_to_s3.py) | Newline-JSON to date-partitioned S3 keys; `Decimal` money kept as a string for exact precision |
 | Load | [src/load_to_snowflake.py](src/load_to_snowflake.py) | `COPY INTO` VARIANT landing tables; idempotent via COPY load history |
-| Transform | [sql/](sql/) + [src/transform.py](src/transform.py) | Typed staging, forward-filled FX dimension, USD fact, monthly aggregate, validation |
+| Transform | [dbt/](dbt/) (**dbt** project `payments_fx`) | Typed staging, forward-filled FX dimension, USD fact, monthly aggregate; validation gates as dbt tests |
 
 ### The two hard bits
 
-- **Forward-fill** ([sql/dim_fx_rates.sql](sql/dim_fx_rates.sql)) — ECB publishes business days only,
+- **Forward-fill** ([dbt/models/marts/dim_fx_rates.sql](dbt/models/marts/dim_fx_rates.sql)) — ECB publishes business days only,
   so a weekend/holiday payment has no rate. A calendar spine × currencies is filled with
   `LAST_VALUE(... ) IGNORE NULLS` (carry last known rate forward; a backward `FIRST_VALUE` covers
   the leading edge). `is_filled` flags carried days.
@@ -66,13 +66,15 @@ Everything below runs **offline** (no cloud accounts):
 python -m snowflake_etl.src.extract_fx_rates --dry-run
 python -m snowflake_etl.src.stage_to_s3 --datasets fx_rates --dry-run
 
-# Loader / transform print the exact SQL they'd run, without connecting
+# Loader prints the exact SQL it would run, without connecting
 python -m snowflake_etl.src.load_to_snowflake --dry-run
-python -m snowflake_etl.src.transform --dry-run
+
+# dbt compiles the whole model DAG without connecting (profiles.yml has parse-safe defaults)
+dbt parse --project-dir snowflake_etl/dbt --profiles-dir snowflake_etl/dbt
 
 # Tests: mocked tier always runs; terraform validates against real provider schemas
 pytest tests/test_extract_fx_rates.py tests/test_stage_to_s3.py tests/test_load_to_snowflake.py \
-       tests/test_transform_sql.py tests/test_snowflake_dag.py
+       tests/test_dbt_project.py tests/test_snowflake_dag.py
 terraform -chdir=infra/terraform/snowflake init -backend=false && \
 terraform -chdir=infra/terraform/snowflake validate
 ```
@@ -104,16 +106,17 @@ terraform -chdir=infra/terraform/snowflake apply  # db, schemas, warehouse, role
 export SNOWFLAKE_ACCOUNT=ORG-ACCT  S3_BUCKET=$TF_VAR_s3_bucket  SNOWFLAKE_ROLE=ACCOUNTADMIN
 python -m snowflake_etl.src.stage_to_s3 --bucket $S3_BUCKET --run-date $(date +%F)
 python -m snowflake_etl.src.load_to_snowflake --run-date $(date +%F)
-python -m snowflake_etl.src.transform
+dbt run  --project-dir snowflake_etl/dbt --profiles-dir snowflake_etl/dbt
+dbt test --project-dir snowflake_etl/dbt --profiles-dir snowflake_etl/dbt
 
 terraform -chdir=infra/terraform/snowflake destroy   # tear down — net ~$0
 ```
 
-**Verified live** (Snowflake trial + S3 Free Tier): `stage → COPY INTO → ELT` loaded **50,004**
-payments + 1,536 FX rows; all four validation gates pass (`fct_payments_usd` reconciles
-50,004 == 50,004, no unmatched USD, no null/zero rate, USD identity holds); total normalized
-volume **$13,498,004.56** across 6 currencies, with the monthly aggregate showing real ECB FX
-drift. Torn down afterward — net ~$0.
+**Verified live** (Snowflake trial + S3 Free Tier): `stage → COPY INTO → dbt` loaded **50,004**
+payments + 1,536 FX rows; `dbt run` builds all 5 models and `dbt test` passes **9/9** (the four
+original gates — reconcile 50,004 == 50,004, no unmatched USD, no null/zero rate, USD identity —
+plus unique/not_null schema tests); total normalized volume **$13,498,004.56** across 6
+currencies, with the monthly aggregate showing real ECB FX drift.
 
 **Trial caveat:** the Snowflake trial expires after 30 days, so the live load is run once for
 evidence then torn down; the code persists. That's why the Snowflake integration test is gated

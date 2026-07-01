@@ -1,0 +1,19 @@
+# dbt project for the Snowflake FX ELT transform layer (the T of the ELT).
+# Replaces the hand-rolled runner (snowflake_etl/src/transform.py + snowflake_etl/sql/,
+# see git history): dbt derives the model DAG from ref()/source() instead of a hardcoded
+# file ordering, and the validate.sql gates became schema + singular tests.
+name: payments_fx
+version: "1.0.0"
+profile: payments_fx
+
+model-paths: ["models"]
+test-paths: ["tests"]
+
+# Match what the hand-rolled runner built: staging as views, marts as tables,
+# everything in the ANALYTICS schema (the profile's schema; no custom suffixing).
+models:
+  payments_fx:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

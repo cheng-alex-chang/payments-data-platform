@@ -13,3 +13,7 @@ config/trino/etc/log.properties
 *.tfstate
 *.tfstate.*
 .databricks/
+snowflake_etl/dbt/target/
+snowflake_etl/dbt/logs/
+snowflake_etl/dbt/dbt_packages/
+snowflake_etl/dbt/.user.yml

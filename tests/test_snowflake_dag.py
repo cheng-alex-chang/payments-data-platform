@@ -73,11 +73,19 @@ class FakeSnowflakeOperator(FakeNode):
         super().__init__(task_id, sql=sql, snowflake_conn_id=snowflake_conn_id, kind="snowflake")
 
 
+class FakeBashOperator(FakeNode):
+    def __init__(self, *, task_id: str, bash_command: str, **kwargs) -> None:  # noqa: ANN003
+        super().__init__(task_id, bash_command=bash_command, kind="bash", **kwargs)
+
+
 def _load_dag(monkeypatch: pytest.MonkeyPatch) -> FakeDAG:
     airflow_module = types.ModuleType("airflow")
     airflow_module.DAG = FakeDAG
     decorators_module = types.ModuleType("airflow.decorators")
     decorators_module.task = _fake_task
+    operators = types.ModuleType("airflow.operators")
+    bash_module = types.ModuleType("airflow.operators.bash")
+    bash_module.BashOperator = FakeBashOperator
     providers = types.ModuleType("airflow.providers")
     sf = types.ModuleType("airflow.providers.snowflake")
     sf_ops = types.ModuleType("airflow.providers.snowflake.operators")
@@ -87,6 +95,8 @@ def _load_dag(monkeypatch: pytest.MonkeyPatch) -> FakeDAG:
     for name, mod in {
         "airflow": airflow_module,
         "airflow.decorators": decorators_module,
+        "airflow.operators": operators,
+        "airflow.operators.bash": bash_module,
         "airflow.providers": providers,
         "airflow.providers.snowflake": sf,
         "airflow.providers.snowflake.operators": sf_ops,
@@ -108,40 +118,47 @@ def test_snowflake_fx_etl_dag_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert dag.schedule_interval is None
     assert dag.max_active_runs == 1
     assert dag.task_ids == {
-        "stage_fx_rates", "stage_payments", "load_raw", "transform_sql", "validate",
+        "stage_fx_rates", "stage_payments", "load_raw", "dbt_run", "dbt_test",
     }
 
-    # Two source extracts stage to S3 in parallel, then fan in to load -> transform -> validate.
+    # Two source extracts stage to S3 in parallel, then fan in to load -> dbt run -> dbt test.
     assert dag.get_task("stage_fx_rates").downstream_task_ids == {"load_raw"}
     assert dag.get_task("stage_payments").downstream_task_ids == {"load_raw"}
-    assert dag.get_task("load_raw").downstream_task_ids == {"transform_sql"}
-    assert dag.get_task("transform_sql").downstream_task_ids == {"validate"}
-    assert dag.get_task("validate").downstream_task_ids == set()
+    assert dag.get_task("load_raw").downstream_task_ids == {"dbt_run"}
+    assert dag.get_task("dbt_run").downstream_task_ids == {"dbt_test"}
+    assert dag.get_task("dbt_test").downstream_task_ids == set()
 
 
-def test_snowflake_tasks_use_managed_connection_and_templated_partition(
+def test_load_raw_uses_managed_connection_and_templated_partition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dag = _load_dag(monkeypatch)
-
     load_raw = dag.get_task("load_raw")
-    transform_sql = dag.get_task("transform_sql")
 
-    # SQL steps run through the Airflow-managed Snowflake connection, not env vars.
+    # The SQL load step runs through the Airflow-managed Snowflake connection, not env vars.
     assert load_raw.snowflake_conn_id == "snowflake_default"
-    assert transform_sql.snowflake_conn_id == "snowflake_default"
-
     # load_raw COPYs the partition Airflow renders at runtime, into the RAW VARIANT tables.
     assert any("dt={{ ds }}/" in stmt for stmt in load_raw.sql)
     assert any("COPY INTO RAW.RAW_PAYMENTS" in stmt for stmt in load_raw.sql)
 
-    # transform_sql runs the model files in dependency order.
-    assert any("CREATE OR REPLACE VIEW ANALYTICS.STG_PAYMENTS" in stmt for stmt in transform_sql.sql)
-    assert any("CREATE OR REPLACE TABLE ANALYTICS.FCT_PAYMENTS_USD" in stmt for stmt in transform_sql.sql)
+
+def test_dbt_tasks_invoke_project_with_run_and_test(monkeypatch: pytest.MonkeyPatch) -> None:
+    dag = _load_dag(monkeypatch)
+
+    run_cmd = dag.get_task("dbt_run").bash_command
+    test_cmd = dag.get_task("dbt_test").bash_command
+
+    assert run_cmd.startswith("dbt run ")
+    assert test_cmd.startswith("dbt test ")
+    # Both point at the in-repo project + its env-var-driven profile.
+    for cmd in (run_cmd, test_cmd):
+        assert "--project-dir" in cmd and "snowflake_etl/dbt" in cmd
+        assert "--profiles-dir" in cmd
+    # A deterministic data-quality failure should fail loudly, not retry.
+    assert dag.get_task("dbt_test").retries == 0
 
 
 def test_staging_tasks_are_taskflow(monkeypatch: pytest.MonkeyPatch) -> None:
     dag = _load_dag(monkeypatch)
     assert dag.get_task("stage_fx_rates").kind == "taskflow"
     assert dag.get_task("stage_payments").kind == "taskflow"
-    assert dag.get_task("validate").kind == "taskflow"  # SnowflakeHook-backed @task

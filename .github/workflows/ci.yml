@@ -80,6 +80,22 @@ jobs:
           terraform -chdir=infra/terraform/databricks init -backend=false
           terraform -chdir=infra/terraform/databricks validate
 
+  dbt:
+    # Parses the dbt project (model compilation, ref()/source() resolution, schema.yml).
+    # `dbt parse` never opens a connection -- profiles.yml falls back to parse-only env-var
+    # defaults -- so this is a real check that needs no Snowflake credentials.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install dbt-snowflake==1.11.6
+
+      - run: dbt parse --project-dir snowflake_etl/dbt --profiles-dir snowflake_etl/dbt
+
   snowflake-terraform:
     # Formats + validates the Snowflake + S3 governance Terraform. Like the Databricks
     # job, `validate` only needs the providers (downloaded by `init -backend=false`), no

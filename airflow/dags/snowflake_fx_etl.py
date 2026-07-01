@@ -1,31 +1,41 @@
 """Snowflake FX ELT DAG -- the batch + cloud-warehouse sibling of payments_pipeline.
 
-Idiomatic operator choices:
+Operator choices:
 * TaskFlow ``@task`` for the Python S3 staging (boto3 work, runs in-process).
-* ``SnowflakeOperator`` for the SQL steps (RAW load via COPY, the transform models), so the
-  warehouse work runs through an Airflow **Connection** (``snowflake_default``) rather than env
-  vars -- credentials live in Airflow's connection store / secrets backend, not in the DAG.
-* A ``SnowflakeHook``-backed ``@task`` for validation, reusing transform.run_validation so a
-  failed data-quality check raises and fails the task with a clear message.
+* ``SnowflakeOperator`` for the RAW load (COPY INTO), so the warehouse load runs through an
+  Airflow **Connection** (``snowflake_default``) -- credentials live in Airflow's connection
+  store / secrets backend, not in the DAG.
+* ``BashOperator`` running **dbt** for the transform + tests: dbt owns the model DAG
+  (ref()-derived ordering) and the data-quality gates, so Airflow just invokes
+  ``dbt run`` / ``dbt test`` and fails the task on a non-zero exit. (astronomer-cosmos could
+  render model-level tasks later; one task per dbt command keeps this image-light.)
 
-Runtime prerequisites (Airflow worker image): ``apache-airflow-providers-snowflake`` installed,
-a ``snowflake_default`` connection (account/user/password/warehouse/database/role), and
-``S3_BUCKET`` / ``SNOWFLAKE_STAGE`` available to the workers.
+Runtime prerequisites (Airflow worker image): ``apache-airflow-providers-snowflake`` and
+``dbt-snowflake`` installed, a ``snowflake_default`` connection, ``SNOWFLAKE_*`` env vars for
+dbt's profile (see snowflake_etl/dbt/profiles.yml), and ``S3_BUCKET`` / ``SNOWFLAKE_STAGE``
+available to the workers.
 """
 from __future__ import annotations
 
 import os
+import shlex
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from airflow import DAG
 from airflow.decorators import task
+from airflow.operators.bash import BashOperator
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
 
-from snowflake_etl.src import load_to_snowflake, stage_to_s3, transform
+from snowflake_etl.src import load_to_snowflake, stage_to_s3
 
 SNOWFLAKE_CONN_ID = "snowflake_default"
 S3_BUCKET = os.getenv("S3_BUCKET", "payments-lake")
 SNOWFLAKE_STAGE = os.getenv("SNOWFLAKE_STAGE", "PAYMENTS_LAKE_STAGE")
+# Resolved relative to this file (repo root is two levels up from airflow/dags/) so the
+# command works in any worker checkout layout; shell-quoted in case the path has spaces.
+DBT_PROJECT_DIR = Path(__file__).resolve().parents[2] / "snowflake_etl" / "dbt"
+DBT_FLAGS = f"--project-dir {shlex.quote(str(DBT_PROJECT_DIR))} --profiles-dir {shlex.quote(str(DBT_PROJECT_DIR))}"
 
 default_args = {
     "owner": "data-eng",
@@ -52,12 +62,12 @@ def _load_raw_sql() -> list[str]:
 with DAG(
     dag_id="snowflake_fx_etl",
     default_args=default_args,
-    description="Stage FX rates + payments to S3, load Snowflake RAW, transform to USD, validate",
+    description="Stage FX rates + payments to S3, load Snowflake RAW, dbt transform + test",
     schedule=None,
     start_date=datetime(2024, 1, 1),
     catchup=False,
     max_active_runs=1,
-    tags=["payments", "snowflake", "s3", "fx", "elt"],
+    tags=["payments", "snowflake", "s3", "fx", "elt", "dbt"],
 ) as dag:
 
     @task(task_id="stage_fx_rates")
@@ -80,21 +90,17 @@ with DAG(
         sql=_load_raw_sql(),
     )
 
-    transform_sql = SnowflakeOperator(
-        task_id="transform_sql",
-        snowflake_conn_id=SNOWFLAKE_CONN_ID,
-        sql=[transform.read_sql(name) for name in transform.TRANSFORM_FILES],
+    dbt_run = BashOperator(
+        task_id="dbt_run",
+        bash_command=f"dbt run {DBT_FLAGS}",
     )
 
-    @task(task_id="validate")
-    def validate() -> None:
-        # Reuse the tested gate (raises on any FAIL) over the Airflow-managed connection.
-        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+    # Data-quality gates: schema tests + the singular reconcile/identity tests. retries=0 --
+    # a deterministic data-quality failure should page, not retry.
+    dbt_test = BashOperator(
+        task_id="dbt_test",
+        bash_command=f"dbt test {DBT_FLAGS}",
+        retries=0,
+    )
 
-        conn = SnowflakeHook(snowflake_conn_id=SNOWFLAKE_CONN_ID).get_conn()
-        try:
-            transform.run_validation(conn)
-        finally:
-            conn.close()
-
-    [stage_fx_rates(), stage_payments()] >> load_raw >> transform_sql >> validate()
+    [stage_fx_rates(), stage_payments()] >> load_raw >> dbt_run >> dbt_test

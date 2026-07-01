@@ -1,19 +1,15 @@
--- Dimension: one clean rate_to_usd per (currency, calendar day), gaps forward-filled.
---
--- The problem: ECB/Frankfurter publishes rates on business days only. A payment created on a
--- Saturday, Sunday, or holiday has no rate for that exact date, so a naive join would drop it.
--- The fix: build a continuous calendar spine over the data window, cross-join every currency,
--- LEFT JOIN the actual rates, then carry the most recent known rate forward
--- (LAST_VALUE ... IGNORE NULLS). A backward FIRST_VALUE covers the leading edge (a payment that
--- precedes the first published rate). is_filled flags any day whose rate was carried rather than
--- published -- useful for transparency and auditing.
-CREATE OR REPLACE TABLE ANALYTICS.DIM_FX_RATES AS
+-- Grain: one row per (currency, calendar day), gap-free.
+-- ECB/Frankfurter publishes rates on business days only; a weekend/holiday payment has no
+-- rate for its exact date and a naive join would drop it. Build a continuous calendar spine
+-- over the data window, cross-join every currency, LEFT JOIN the published rates, then carry
+-- the last known rate forward (LAST_VALUE IGNORE NULLS). A backward FIRST_VALUE covers the
+-- leading edge. is_filled flags carried days -- auditable, not hidden.
 WITH bounds AS (
     SELECT
-        (SELECT MIN(created_at::DATE) FROM ANALYTICS.STG_PAYMENTS) AS pay_min,
-        (SELECT MAX(created_at::DATE) FROM ANALYTICS.STG_PAYMENTS) AS pay_max,
-        (SELECT MIN(rate_date) FROM ANALYTICS.STG_FX_RATES)        AS fx_min,
-        (SELECT MAX(rate_date) FROM ANALYTICS.STG_FX_RATES)        AS fx_max
+        (SELECT MIN(created_at::DATE) FROM {{ ref('stg_payments') }}) AS pay_min,
+        (SELECT MAX(created_at::DATE) FROM {{ ref('stg_payments') }}) AS pay_max,
+        (SELECT MIN(rate_date) FROM {{ ref('stg_fx_rates') }})        AS fx_min,
+        (SELECT MAX(rate_date) FROM {{ ref('stg_fx_rates') }})        AS fx_max
 ),
 span AS (
     SELECT LEAST(pay_min, fx_min) AS start_date,
@@ -28,7 +24,7 @@ date_spine AS (
     WHERE d <= (SELECT end_date FROM span)
 ),
 currencies AS (
-    SELECT DISTINCT currency FROM ANALYTICS.STG_FX_RATES
+    SELECT DISTINCT currency FROM {{ ref('stg_fx_rates') }}
 ),
 grid AS (
     SELECT c.currency, s.d AS rate_date
@@ -38,7 +34,7 @@ grid AS (
 joined AS (
     SELECT g.currency, g.rate_date, f.rate_to_usd
     FROM grid g
-    LEFT JOIN ANALYTICS.STG_FX_RATES f
+    LEFT JOIN {{ ref('stg_fx_rates') }} f
         ON f.currency = g.currency
        AND f.rate_date = g.rate_date
 )
@@ -56,4 +52,4 @@ SELECT
         )
     ) AS rate_to_usd,
     rate_to_usd IS NULL AS is_filled  -- TRUE = carried from a prior/next business day
-FROM joined;
+FROM joined

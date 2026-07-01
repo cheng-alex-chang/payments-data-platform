@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      VARIANT landing tables loaded by COPY INTO from the S3 external stage
+      (snowflake_etl/src/load_to_snowflake.py). Each row is one JSON line landed verbatim,
+      with source_file / loaded_at lineage columns.
+    database: "{{ env_var('SNOWFLAKE_DATABASE', 'PAYMENTS') }}"
+    schema: RAW
+    tables:
+      - name: raw_payments
+        description: Daily full-snapshot extracts of the Postgres payments table (one JSON object per row in `raw`).
+      - name: raw_fx_rates
+        description: Daily ECB FX rates from the Frankfurter API, already inverted to rate_to_usd (USD per unit).

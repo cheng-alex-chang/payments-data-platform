@@ -1,0 +1,31 @@
+version: 2
+
+# The old validate.sql gates live on as dbt tests: unmatched-USD -> not_null(usd_amount);
+# reconcile / null-or-zero-rate / USD-identity -> singular tests in tests/. `dbt test` fails
+# the pipeline exactly like the old runner's RuntimeError.
+models:
+  - name: stg_payments
+    description: "Grain: one row per payment (latest version after snapshot dedup)."
+    columns:
+      - name: payment_id
+        tests: [unique, not_null]
+
+  - name: stg_fx_rates
+    description: "Grain: one row per (rate_date, currency) as published by the ECB (business days only)."
+
+  - name: dim_fx_rates
+    description: "Grain: one row per (currency, calendar day) -- gap-free; weekend/holiday rates forward-filled and flagged via is_filled."
+    columns:
+      - name: rate_to_usd
+        tests: [not_null]
+
+  - name: fct_payments_usd
+    description: "Grain: one row per payment, USD-normalized (usd_amount = amount * rate_to_usd)."
+    columns:
+      - name: payment_id
+        tests: [unique, not_null]
+      - name: usd_amount
+        tests: [not_null]   # an unmatched currency/date would leave this NULL -- fail loudly
+
+  - name: agg_payments_by_currency
+    description: "Grain: one row per (month, currency, country_code) -- monthly USD volume for finance/BI."
