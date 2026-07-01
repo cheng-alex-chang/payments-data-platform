@@ -120,4 +120,4 @@ evidence then torn down; the code persists. That's why the Snowflake integration
 (never a permanent CI dependency) and the driver lives in `requirements-snowflake.txt`, not CI.
 
 See [docs/production-readiness.md](../docs/production-readiness.md) for the hardening backlog
-(key-pair auth, IAM roles, dependency pinning, remote Terraform state, …).
+(key-pair auth, IAM roles, DAG alerting, remote Terraform state, …).

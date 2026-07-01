@@ -3,4 +3,4 @@
 # the unit tests import it lazily / via importorskip, and CI has no Snowflake creds, so
 # installing it there would just slow CI without running anything. Install in the cloud
 # session: pip install -r requirements-snowflake.txt
-snowflake-connector-python
+snowflake-connector-python==4.6.0

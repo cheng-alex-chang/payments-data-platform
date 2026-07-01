@@ -40,6 +40,7 @@ jobs:
           --cov=config/spark/jobs
           --cov=scripts
           --cov=databricks/src/common.py
+          --cov=snowflake_etl/src
           --cov-report=term-missing
           --cov-fail-under=80
 

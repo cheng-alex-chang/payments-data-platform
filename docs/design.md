@@ -136,7 +136,7 @@ The DAG `snowflake_fx_etl` stages the two sources to S3 in parallel (TaskFlow `@
 
 ### Known limitations
 
-Tracked in [production-readiness.md](production-readiness.md): password auth (→ key-pair), env-based AWS creds (→ IAM roles), unpinned dependencies, the split credential mechanism in the DAG, FX-source resilience, and remote Terraform state. The live load is run once against a Snowflake 30-day trial + S3 Free Tier for evidence, then torn down; the code persists and is otherwise verified offline (mocked S3, fake cursor, `terraform validate`).
+Tracked in [production-readiness.md](production-readiness.md): password auth (→ key-pair), env-based AWS creds (→ IAM roles), DAG failure alerting, remote Terraform state, and data-contract enforcement. The live load is run once against a Snowflake 30-day trial + S3 Free Tier for evidence, then torn down; the code persists and is otherwise verified offline (mocked S3, fake cursor, `terraform validate`).
 
 ## Monitoring
 
