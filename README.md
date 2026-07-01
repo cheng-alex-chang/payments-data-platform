@@ -1,20 +1,13 @@
-# Local CDC Data Platform
+# Payments Data Platform
 
-A local data engineering project built around:
+A payments data-engineering project that runs **both** dominant analytics paradigms over one domain:
 
-`Postgres -> Debezium/Kafka Connect -> Kafka -> PySpark -> Iceberg on HDFS -> Trino`
+- **Streaming lakehouse (operational):** `Postgres → Debezium/Kafka Connect → Kafka → PySpark → Iceberg on HDFS → Trino` — near-real-time CDC on an open table format.
+- **Batch cloud warehouse (financial):** `FX REST API + Postgres → AWS S3 → Snowflake ELT` — daily batch that normalizes every payment to USD for cross-currency analytics.
 
-with:
+Shared across both: `Airflow` orchestration, `Terraform` governance (Databricks + Snowflake/S3), `Hive Metastore` as the Iceberg catalog, `Metabase` ad-hoc dashboards, `Prometheus + Grafana` monitoring, and `pytest` + GitHub Actions CI.
 
-- `Airflow` for orchestration
-- `Hive Metastore` as the Iceberg catalog
-- `Metabase` for ad hoc dashboards
-- `Prometheus + Grafana` for platform monitoring and a seeded payments demo dashboard
-- `pytest` for tests
-
-See [docs/design.md](docs/design.md) for layer contracts, incremental processing, CDC delete handling, and known limitations.
-
-A second, **batch + cloud-warehouse** pipeline extends the same domain: a pull-based **FX-rates REST API** plus the payments table, staged through **AWS S3** and loaded into a **Snowflake ELT** that normalizes payments to USD for cross-currency analytics — the operational lakehouse and the financial warehouse, side by side. See [snowflake_etl/](snowflake_etl/README.md).
+See [docs/design.md](docs/design.md) for layer contracts (both pipelines), incremental processing, and CDC delete handling; [snowflake_etl/README.md](snowflake_etl/README.md) for the Snowflake FX ELT; and [docs/production-readiness.md](docs/production-readiness.md) for the hardening backlog.
 
 ## Deployment targets
 
@@ -28,6 +21,8 @@ The same medallion contract (bronze → silver → gold, CDC-aware) runs three w
 
 ## Architecture
 
+**Streaming lakehouse** — near-real-time CDC into an open table format:
+
 ```text
 Postgres
   -> Debezium / Kafka Connect            CDC via logical replication
@@ -36,6 +31,16 @@ Postgres
   -> Spark silver job                    foreachBatch -> Iceberg MERGE / DELETE
   -> Spark gold job                      Batch SQL -> Iceberg INSERT OVERWRITE
   -> Trino                               SQL over Iceberg via Hive Metastore
+```
+
+**Batch cloud warehouse** — a second source (FX rates) staged to S3, USD-normalized in Snowflake:
+
+```text
+FX REST API + Postgres
+  -> stage_to_s3                         newline-JSON to S3, partitioned by dt
+  -> Snowflake COPY INTO                 RAW VARIANT landing tables
+  -> Snowflake SQL ELT                   stg -> dim_fx_rates (forward-fill) -> fct_payments_usd
+  -> agg_payments_by_currency            monthly USD-normalized volume + FX drift
 ```
 
 ## Bronze, Silver, Gold
@@ -179,7 +184,7 @@ FX REST API + Postgres → S3 (raw/<dataset>/dt=…) → Snowflake RAW (VARIANT)
 
 It's orchestrated by an Airflow DAG (`airflow/dags/snowflake_fx_etl.py`) using TaskFlow `@task` for the S3 staging and `SnowflakeOperator` (via a managed `snowflake_default` connection) for the SQL, and governed by **Terraform** (`infra/terraform/snowflake/`): database, RAW/ANALYTICS schemas, an XS auto-suspend warehouse, a least-privilege role, and the AWS↔Snowflake wiring (S3 bucket + storage integration + external stage). This is a deliberate **two-tier** design, not a duplicate of the lakehouse: the lakehouse serves *hourly operational* analytics; Snowflake serves *monthly, USD-normalized* financials.
 
-Everything is verifiable offline (mocked S3, fake Snowflake cursor, `terraform validate`); the live load against a Snowflake 30-day trial + S3 Free Tier is a one-session activity that's then torn down. See **[snowflake_etl/README.md](snowflake_etl/README.md)** for the architecture, run commands, test tiers, and trial caveat, and [docs/production-readiness.md](docs/production-readiness.md) for the hardening backlog.
+Everything is verifiable offline (mocked S3, fake Snowflake cursor, `terraform validate`); the live load against a Snowflake 30-day trial + S3 Free Tier is a one-session activity that's then torn down. **Verified live:** `stage → COPY INTO → ELT` reconciles **50,004 == 50,004** payments with all four data-quality gates passing, yielding **$13.5M** in USD-normalized volume across 6 currencies. See **[snowflake_etl/README.md](snowflake_etl/README.md)** for the architecture, run commands, test tiers, and trial caveat, and [docs/production-readiness.md](docs/production-readiness.md) for the hardening backlog.
 
 ## Airflow Pipeline
 
@@ -286,3 +291,13 @@ Grafana shows the seeded demo data as business-facing metrics, including volume,
 Trino shows the materialized gold layer directly, making it easy to inspect the hourly aggregates produced by the pipeline.
 
 ![Trino query results for the payment_metrics_gold Iceberg table](docs/images/trino-gold-metrics-query.png)
+
+### Snowflake FX ELT
+
+The batch pipeline normalizes every payment to USD in Snowflake. Native volume is nearly equal across the six currencies, but USD-normalized volume diverges purely from FX rates — the reason the pipeline exists.
+
+![Snowflake bar chart of USD-normalized payment volume by currency](docs/images/snowflake-usd-by-currency.png)
+
+The two sources land in AWS S3 as date-partitioned JSON before `COPY INTO` Snowflake's RAW VARIANT tables.
+
+![AWS S3 console showing raw/fx_rates and raw/payments date partitions](docs/images/s3-raw-partitions.png)
