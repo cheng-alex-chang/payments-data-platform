@@ -65,6 +65,8 @@ KUBECONFIG=.kind/kubeconfig kubectl apply -k k8s/overlays/local
 
 The script also builds and loads the local Airflow, Hive Metastore, and Trino exporter images into the kind cluster.
 
+Cluster passwords come from `k8s/overlays/local/secrets.env` (gitignored). On first run the script seeds it from `secrets.env.example` with placeholder values — edit it to change local credentials; real values never land in git, mirroring the Compose `.env` / `.env.example` pattern.
+
 ## Inspect
 
 ```bash

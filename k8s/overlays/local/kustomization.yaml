@@ -19,18 +19,19 @@ configMapGenerator:
       - warehouse=hdfs://namenode:9000/warehouse
       - kafkaBootstrap=kafka:29092
 
+# Passwords come from secrets.env (gitignored; copy secrets.env.example and edit).
+# Only non-secret identifiers stay as committed literals -- no credentials in git,
+# matching the Compose .env / .env.example pattern.
 secretGenerator:
   - name: platform-secrets
     namespace: data-pipeline
     literals:
       - POSTGRES_DB=payments
       - POSTGRES_USER=dataeng
-      - POSTGRES_PASSWORD=changeme
       - METASTORE_DB=metastore
       - METASTORE_USER=hive
-      - METASTORE_PASSWORD=changeme
       - AIRFLOW_DB=airflow
       - AIRFLOW_USER=airflow
-      - AIRFLOW_PASSWORD=changeme
       - AIRFLOW_ADMIN_USERNAME=admin
-      - AIRFLOW_ADMIN_PASSWORD=changeme
+    envs:
+      - secrets.env

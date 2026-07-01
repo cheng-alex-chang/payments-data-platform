@@ -13,6 +13,16 @@ for command in docker kind kubectl; do
 done
 
 cd "${ROOT_DIR}"
+
+# The overlay reads passwords from a gitignored secrets.env (see secrets.env.example).
+# Seed it from the example on first run so `kubectl apply -k` can render.
+SECRETS_ENV="${ROOT_DIR}/k8s/overlays/local/secrets.env"
+if [ ! -f "${SECRETS_ENV}" ]; then
+  cp "${SECRETS_ENV}.example" "${SECRETS_ENV}"
+  echo "Created k8s/overlays/local/secrets.env from the example (placeholder passwords)." >&2
+  echo "Edit it to change local cluster credentials; the file stays untracked." >&2
+fi
+
 mkdir -p .kind
 kind get clusters | grep -qx "${CLUSTER_NAME}" \
   || kind create cluster --name "${CLUSTER_NAME}" \
