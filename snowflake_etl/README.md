@@ -18,6 +18,8 @@ operational* gold; this produces *monthly, USD-normalized* financials.
 
 ## Architecture
 
+![Snowflake FX ELT architecture — FX REST API and Postgres staged to S3, loaded to Snowflake RAW via COPY INTO, transformed by SQL ELT to USD analytics](../docs/images/architecture-snowflake-elt.svg)
+
 ```text
 Frankfurter FX API ─▶ extract_fx_rates ─┐
 (ECB daily rates)                       │  @task (parallel)

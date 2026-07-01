@@ -21,6 +21,8 @@ The same medallion contract (bronze → silver → gold, CDC-aware) runs three w
 
 ## Architecture
 
+![Payments Data Platform architecture — a shared Postgres source feeding a streaming lakehouse and a batch Snowflake warehouse](docs/images/architecture-overview.svg)
+
 **Streaming lakehouse** — near-real-time CDC into an open table format:
 
 ```text
@@ -298,6 +300,6 @@ The batch pipeline normalizes every payment to USD in Snowflake. Native volume i
 
 ![Snowflake bar chart of USD-normalized payment volume by currency](docs/images/snowflake-usd-by-currency.png)
 
-The two sources land in AWS S3 as date-partitioned JSON before `COPY INTO` Snowflake's RAW VARIANT tables.
+The pipeline itself: two sources staged to S3, loaded into Snowflake RAW, and transformed to USD in Snowflake SQL.
 
-![AWS S3 console showing raw/fx_rates and raw/payments date partitions](docs/images/s3-raw-partitions.png)
+![Snowflake FX ELT architecture — FX REST API and Postgres staged to S3, loaded to Snowflake RAW, transformed by SQL ELT to USD analytics](docs/images/architecture-snowflake-elt.svg)

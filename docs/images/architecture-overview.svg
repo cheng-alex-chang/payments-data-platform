@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 520" role="img" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <title>Payments Data Platform architecture</title>
+  <desc>A shared Postgres payments source feeds two pipelines: a streaming lakehouse (Debezium/Kafka to Spark medallion to Iceberg on HDFS to Trino) for operational analytics, and a batch warehouse (stage to AWS S3 to Snowflake RAW to SQL ELT to USD analytics) for financial analytics. Airflow orchestrates, Terraform governs, Prometheus and Grafana observe.</desc>
+  <defs>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="1159" height="519" rx="14" fill="#ffffff" stroke="#e2e8f0"/>
+  <text x="36" y="46" font-size="22" font-weight="700" fill="#0f172a">Payments Data Platform</text>
+  <text x="36" y="70" font-size="13" fill="#64748b">One domain, two paradigms &#8212; operational lakehouse + financial warehouse</text>
+
+  <rect x="812" y="34" width="14" height="14" rx="3" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="834" y="45" font-size="11" fill="#475569">Streaming (operational)</text>
+  <rect x="812" y="56" width="14" height="14" rx="3" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.5"/>
+  <text x="834" y="67" font-size="11" fill="#475569">Batch (financial)</text>
+
+  <rect x="36" y="210" width="150" height="60" rx="10" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="111" y="236" text-anchor="middle" font-size="14" font-weight="600" fill="#334155">Postgres</text>
+  <text x="111" y="254" text-anchor="middle" font-size="11" fill="#64748b">payments source</text>
+
+  <rect x="36" y="330" width="150" height="54" rx="10" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="111" y="353" text-anchor="middle" font-size="14" font-weight="600" fill="#334155">FX REST API</text>
+  <text x="111" y="370" text-anchor="middle" font-size="11" fill="#64748b">ECB rates</text>
+
+  <text x="210" y="150" font-size="13" font-weight="700" fill="#1e40af">Streaming lakehouse &#8212; operational</text>
+  <rect x="210" y="168" width="150" height="60" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="285" y="194" text-anchor="middle" font-size="13.5" font-weight="600" fill="#1e3a5f">Debezium / Kafka</text>
+  <text x="285" y="212" text-anchor="middle" font-size="11" fill="#64748b">CDC events</text>
+
+  <rect x="386" y="168" width="176" height="60" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="474" y="194" text-anchor="middle" font-size="13.5" font-weight="600" fill="#1e3a5f">Spark medallion</text>
+  <text x="474" y="212" text-anchor="middle" font-size="11" fill="#64748b">bronze &#183; silver &#183; gold</text>
+
+  <rect x="588" y="168" width="150" height="60" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="663" y="194" text-anchor="middle" font-size="13.5" font-weight="600" fill="#1e3a5f">Iceberg on HDFS</text>
+  <text x="663" y="212" text-anchor="middle" font-size="11" fill="#64748b">open table format</text>
+
+  <rect x="764" y="168" width="140" height="60" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="834" y="194" text-anchor="middle" font-size="13.5" font-weight="600" fill="#1e3a5f">Trino</text>
+  <text x="834" y="212" text-anchor="middle" font-size="11" fill="#64748b">SQL query engine</text>
+
+  <text x="210" y="352" font-size="13" font-weight="700" fill="#0f766e">Batch warehouse &#8212; financial</text>
+  <rect x="210" y="368" width="150" height="60" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.5"/>
+  <text x="285" y="394" text-anchor="middle" font-size="13.5" font-weight="600" fill="#134e4a">AWS S3</text>
+  <text x="285" y="412" text-anchor="middle" font-size="11" fill="#64748b">partitioned JSON</text>
+
+  <rect x="386" y="368" width="160" height="60" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.5"/>
+  <text x="466" y="394" text-anchor="middle" font-size="13.5" font-weight="600" fill="#134e4a">Snowflake RAW</text>
+  <text x="466" y="412" text-anchor="middle" font-size="11" fill="#64748b">COPY INTO</text>
+
+  <rect x="572" y="368" width="150" height="60" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.5"/>
+  <text x="647" y="394" text-anchor="middle" font-size="13.5" font-weight="600" fill="#134e4a">SQL ELT</text>
+  <text x="647" y="412" text-anchor="middle" font-size="11" fill="#64748b">dim &#183; fct &#183; agg</text>
+
+  <rect x="748" y="368" width="160" height="60" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.8"/>
+  <text x="828" y="394" text-anchor="middle" font-size="13.5" font-weight="700" fill="#134e4a">USD analytics</text>
+  <text x="828" y="412" text-anchor="middle" font-size="11" fill="#3f6b64">USD-normalized</text>
+
+  <line x1="186" y1="228" x2="208" y2="200" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ao)"/>
+  <line x1="360" y1="198" x2="384" y2="198" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ao)"/>
+  <line x1="562" y1="198" x2="586" y2="198" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ao)"/>
+  <line x1="738" y1="198" x2="762" y2="198" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ao)"/>
+
+  <line x1="186" y1="252" x2="208" y2="392" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ao)"/>
+  <line x1="186" y1="357" x2="208" y2="400" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ao)"/>
+  <line x1="360" y1="398" x2="384" y2="398" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ao)"/>
+  <line x1="546" y1="398" x2="570" y2="398" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ao)"/>
+  <line x1="722" y1="398" x2="746" y2="398" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ao)"/>
+
+  <rect x="36" y="452" width="1088" height="46" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="580" y="480" text-anchor="middle" font-size="12.5" font-weight="600" fill="#475569">Airflow orchestration      &#183;      Terraform governance      &#183;      Prometheus / Grafana observability</text>
+</svg>
