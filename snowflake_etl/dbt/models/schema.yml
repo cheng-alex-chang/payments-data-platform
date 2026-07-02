@@ -13,8 +13,14 @@ models:
   - name: stg_fx_rates
     description: "Grain: one row per (rate_date, currency) as published by the ECB (business days only)."
 
+  - name: dim_date
+    description: "Grain: one row per calendar day spanning the payments + FX window. Conformed date dimension: owns the calendar spine and the reporting attributes (year/quarter/month/day-of-week/is_weekend)."
+    columns:
+      - name: date_day
+        tests: [unique, not_null]
+
   - name: dim_fx_rates
-    description: "Grain: one row per (currency, calendar day) -- gap-free; weekend/holiday rates forward-filled and flagged via is_filled."
+    description: "Grain: one row per (currency, calendar day) -- gap-free; weekend/holiday rates forward-filled and flagged via is_filled. Spine comes from dim_date."
     columns:
       - name: rate_to_usd
         tests: [not_null]

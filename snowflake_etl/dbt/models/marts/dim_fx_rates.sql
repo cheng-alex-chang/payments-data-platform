@@ -1,27 +1,11 @@
 -- Grain: one row per (currency, calendar day), gap-free.
 -- ECB/Frankfurter publishes rates on business days only; a weekend/holiday payment has no
--- rate for its exact date and a naive join would drop it. Build a continuous calendar spine
--- over the data window, cross-join every currency, LEFT JOIN the published rates, then carry
--- the last known rate forward (LAST_VALUE IGNORE NULLS). A backward FIRST_VALUE covers the
--- leading edge. is_filled flags carried days -- auditable, not hidden.
-WITH bounds AS (
-    SELECT
-        (SELECT MIN(created_at::DATE) FROM {{ ref('stg_payments') }}) AS pay_min,
-        (SELECT MAX(created_at::DATE) FROM {{ ref('stg_payments') }}) AS pay_max,
-        (SELECT MIN(rate_date) FROM {{ ref('stg_fx_rates') }})        AS fx_min,
-        (SELECT MAX(rate_date) FROM {{ ref('stg_fx_rates') }})        AS fx_max
-),
-span AS (
-    SELECT LEAST(pay_min, fx_min) AS start_date,
-           GREATEST(pay_max, fx_max) AS end_date
-    FROM bounds
-),
-date_spine AS (
-    SELECT d FROM (
-        SELECT DATEADD('day', SEQ4(), (SELECT start_date FROM span)) AS d
-        FROM TABLE(GENERATOR(ROWCOUNT => 800))  -- ~2.2yr buffer; trimmed to the span below
-    )
-    WHERE d <= (SELECT end_date FROM span)
+-- rate for its exact date and a naive join would drop it. Take the calendar spine from the
+-- conformed date dimension, cross-join every currency, LEFT JOIN the published rates, then
+-- carry the last known rate forward (LAST_VALUE IGNORE NULLS). A backward FIRST_VALUE covers
+-- the leading edge. is_filled flags carried days -- auditable, not hidden.
+WITH date_spine AS (
+    SELECT date_day AS d FROM {{ ref('dim_date') }}  -- dim_date owns the calendar
 ),
 currencies AS (
     SELECT DISTINCT currency FROM {{ ref('stg_fx_rates') }}

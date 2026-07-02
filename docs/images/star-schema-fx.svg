@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 430" role="img" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <title>Star schema for the Snowflake FX ELT</title>
+  <desc>fct_payments_usd fact table (grain: one row per payment) joined to two dimensions: dim_fx_rates on currency and date (grain: one row per currency per calendar day, forward-filled) and dim_date on created date (grain: one row per calendar day).</desc>
+  <defs>
+    <marker id="ln" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="1159" height="429" rx="14" fill="#ffffff" stroke="#e2e8f0"/>
+  <text x="36" y="46" font-size="22" font-weight="700" fill="#0f172a">Star schema &#8212; USD-normalized payments</text>
+  <text x="36" y="70" font-size="13" fill="#64748b">Kimball-style: one fact, two conformed dimensions &#183; ANALYTICS schema, built by dbt</text>
+
+  <!-- dim_fx_rates (left) -->
+  <rect x="60" y="130" width="270" height="150" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.6"/>
+  <rect x="60" y="130" width="270" height="34" rx="10" fill="#ccfbf1" stroke="#0d9488" stroke-width="1.6"/>
+  <text x="195" y="152" text-anchor="middle" font-size="14" font-weight="700" fill="#134e4a">dim_fx_rates</text>
+  <text x="76" y="186" font-size="12" fill="#334155">currency        (join key)</text>
+  <text x="76" y="206" font-size="12" fill="#334155">rate_date       (join key)</text>
+  <text x="76" y="226" font-size="12" fill="#334155">rate_to_usd</text>
+  <text x="76" y="246" font-size="12" fill="#334155">is_filled</text>
+  <text x="76" y="270" font-size="11" font-style="italic" fill="#0f766e">grain: 1 row / currency / day (gap-free)</text>
+
+  <!-- fct_payments_usd (center) -->
+  <rect x="445" y="110" width="290" height="212" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+  <rect x="445" y="110" width="290" height="34" rx="10" fill="#dbeafe" stroke="#2563eb" stroke-width="1.8"/>
+  <text x="590" y="132" text-anchor="middle" font-size="14" font-weight="700" fill="#1e3a8a">fct_payments_usd</text>
+  <text x="461" y="166" font-size="12" fill="#334155">payment_id      (PK)</text>
+  <text x="461" y="186" font-size="12" fill="#334155">currency, created_date   (FKs)</text>
+  <text x="461" y="206" font-size="12" fill="#334155">merchant_id &#183; shopper_id &#183; country</text>
+  <text x="461" y="226" font-size="12" fill="#334155">amount          (native)</text>
+  <text x="461" y="246" font-size="12" font-weight="600" fill="#1e3a8a">usd_amount = amount &#215; rate_to_usd</text>
+  <text x="461" y="266" font-size="12" fill="#334155">fx_rate_filled</text>
+  <text x="461" y="292" font-size="11" font-style="italic" fill="#1e40af">grain: 1 row / payment</text>
+
+  <!-- dim_date (right) -->
+  <rect x="850" y="130" width="250" height="150" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.6"/>
+  <rect x="850" y="130" width="250" height="34" rx="10" fill="#ccfbf1" stroke="#0d9488" stroke-width="1.6"/>
+  <text x="975" y="152" text-anchor="middle" font-size="14" font-weight="700" fill="#134e4a">dim_date</text>
+  <text x="866" y="186" font-size="12" fill="#334155">date_day        (join key)</text>
+  <text x="866" y="206" font-size="12" fill="#334155">year &#183; quarter &#183; month</text>
+  <text x="866" y="226" font-size="12" fill="#334155">day_of_week &#183; day_name</text>
+  <text x="866" y="246" font-size="12" fill="#334155">is_weekend</text>
+  <text x="866" y="270" font-size="11" font-style="italic" fill="#0f766e">grain: 1 row / calendar day</text>
+
+  <!-- joins -->
+  <line x1="330" y1="205" x2="441" y2="205" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ln)"/>
+  <text x="385" y="193" text-anchor="middle" font-size="10.5" fill="#64748b">currency +</text>
+  <text x="385" y="220" text-anchor="middle" font-size="10.5" fill="#64748b">rate_date = created_date</text>
+  <line x1="846" y1="205" x2="739" y2="205" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ln)"/>
+  <text x="792" y="193" text-anchor="middle" font-size="10.5" fill="#64748b">date_day =</text>
+  <text x="792" y="220" text-anchor="middle" font-size="10.5" fill="#64748b">created_date</text>
+
+  <!-- downstream note -->
+  <rect x="60" y="350" width="1040" height="48" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="580" y="370" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">agg_payments_by_currency rolls the fact up to monthly grain (1 row / month / currency / country)</text>
+  <text x="580" y="388" text-anchor="middle" font-size="11.5" fill="#64748b">dim_fx_rates builds its gap-free grid off dim_date's spine &#8212; ECB business-day gaps forward-filled, flagged by is_filled</text>
+</svg>

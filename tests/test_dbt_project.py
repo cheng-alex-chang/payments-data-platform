@@ -22,6 +22,7 @@ def test_expected_models_and_tests_exist() -> None:
     for relpath in (
         "models/staging/stg_payments.sql",
         "models/staging/stg_fx_rates.sql",
+        "models/marts/dim_date.sql",
         "models/marts/dim_fx_rates.sql",
         "models/marts/fct_payments_usd.sql",
         "models/marts/agg_payments_by_currency.sql",
@@ -30,6 +31,7 @@ def test_expected_models_and_tests_exist() -> None:
         "tests/fact_reconciles_to_payments.sql",
         "tests/no_null_or_zero_fx_rate.sql",
         "tests/usd_payments_unchanged.sql",
+        "tests/dim_fx_rates_grain_unique.sql",
     ):
         assert (DBT_DIR / relpath).is_file(), relpath
 
@@ -50,6 +52,16 @@ def test_dim_fx_rates_forward_fills_gaps() -> None:
     assert "LAST_VALUE(rate_to_usd) IGNORE NULLS" in dim   # carry last known rate forward
     assert "FIRST_VALUE(rate_to_usd) IGNORE NULLS" in dim  # cover the leading edge
     assert "is_filled" in dim                              # gaps flagged, not hidden
+    assert "{{ ref('dim_date') }}" in dim                  # spine comes from the conformed dim
+
+
+def test_dim_date_owns_the_calendar_spine() -> None:
+    dim = _read("models/marts/dim_date.sql")
+    assert "GENERATOR" in dim                              # the one spine in the project
+    assert "is_weekend" in dim
+    # dim_date is the only model that generates a calendar; everyone else refs it.
+    for other in ("models/marts/dim_fx_rates.sql", "models/marts/fct_payments_usd.sql"):
+        assert "GENERATOR" not in _read(other), other
 
 
 def test_schema_declares_the_validation_gates() -> None:

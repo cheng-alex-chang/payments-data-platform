@@ -46,6 +46,24 @@ Orchestrated by Airflow (`airflow/dags/snowflake_fx_etl.py`), governed by Terraf
 | Load | [src/load_to_snowflake.py](src/load_to_snowflake.py) | `COPY INTO` VARIANT landing tables; idempotent via COPY load history |
 | Transform | [dbt/](dbt/) (**dbt** project `payments_fx`) | Typed staging, forward-filled FX dimension, USD fact, monthly aggregate; validation gates as dbt tests |
 
+## Data model
+
+The warehouse side is a Kimball-style **star schema**, built by dbt with the grain of every
+model stated in [dbt/models/schema.yml](dbt/models/schema.yml):
+
+![Star schema: fct_payments_usd joined to dim_fx_rates (currency + date) and dim_date (created date)](../docs/images/star-schema-fx.svg)
+
+| Model | Kind | Grain |
+|---|---|---|
+| `fct_payments_usd` | fact | one row per payment (USD-normalized) |
+| `dim_fx_rates` | dimension | one row per currency per calendar day, gap-free |
+| `dim_date` | conformed dimension | one row per calendar day (owns the spine) |
+| `agg_payments_by_currency` | aggregate | one row per month × currency × country |
+
+`dim_date` owns the calendar spine; `dim_fx_rates` builds its gap-free grid off it, and the
+fact's `created_date` joins to both. Grain is enforced, not just documented — `unique` +
+`not_null` dbt tests pin one-row-per-key on the fact and both dimensions.
+
 ### The two hard bits
 
 - **Forward-fill** ([dbt/models/marts/dim_fx_rates.sql](dbt/models/marts/dim_fx_rates.sql)) — ECB publishes business days only,
