@@ -27,6 +27,8 @@ from airflow.decorators import task
 from airflow.operators.bash import BashOperator
 from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
 
+from alerts import notify_failure  # dags/ is on sys.path inside Airflow
+
 from snowflake_etl.src import load_to_snowflake, stage_to_s3
 
 SNOWFLAKE_CONN_ID = "snowflake_default"
@@ -44,6 +46,8 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
     "retry_exponential_backoff": True,
     "max_retry_delay": timedelta(minutes=30),
+    # Fires after retries are exhausted; webhook-or-warn, see alerts.py.
+    "on_failure_callback": notify_failure,
 }
 
 

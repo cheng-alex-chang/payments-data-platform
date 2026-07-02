@@ -16,10 +16,11 @@ objects.
 
 ## Operations
 
-- **DAG failure alerting.** Neither DAG sets `on_failure_callback`, SLAs, or paging/Slack alerts —
-  a production pipeline needs failures to be noticed, not silent.
 - **Remote Terraform state.** State is local; a team/production setup needs a remote backend
   (S3 + DynamoDB lock) so applies are shared and locked.
+- ~~DAG failure alerting~~ **Done:** both DAGs wire `on_failure_callback` to a webhook notifier
+  (`airflow/dags/alerts.py`) — POSTs to `ALERT_WEBHOOK_URL` (Slack-compatible) when set, logs a
+  warning and no-ops when unset, and never raises.
 
 ## Data
 

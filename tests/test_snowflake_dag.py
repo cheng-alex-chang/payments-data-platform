@@ -36,6 +36,7 @@ class FakeDAG:
         self.schedule_interval = kwargs.get("schedule")
         self.max_active_runs = kwargs.get("max_active_runs")
         self.tags = kwargs.get("tags")
+        self.default_args = kwargs.get("default_args")
         self.tasks: dict[str, FakeNode] = {}
 
     def __enter__(self) -> "FakeDAG":
@@ -105,6 +106,7 @@ def _load_dag(monkeypatch: pytest.MonkeyPatch) -> FakeDAG:
         monkeypatch.setitem(sys.modules, name, mod)
 
     path = Path(__file__).resolve().parents[1] / "airflow" / "dags" / "snowflake_fx_etl.py"
+    monkeypatch.syspath_prepend(str(path.parent))  # so `from alerts import ...` resolves
     spec = importlib.util.spec_from_file_location("repo_snowflake_fx_etl", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -162,3 +164,10 @@ def test_staging_tasks_are_taskflow(monkeypatch: pytest.MonkeyPatch) -> None:
     dag = _load_dag(monkeypatch)
     assert dag.get_task("stage_fx_rates").kind == "taskflow"
     assert dag.get_task("stage_payments").kind == "taskflow"
+
+
+def test_failure_callback_is_wired(monkeypatch: pytest.MonkeyPatch) -> None:
+    dag = _load_dag(monkeypatch)
+    callback = dag.default_args["on_failure_callback"]
+    assert callable(callback)
+    assert callback.__name__ == "notify_failure"

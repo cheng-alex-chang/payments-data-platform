@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 
+from alerts import notify_failure  # dags/ is on sys.path inside Airflow
 
 default_args = {
     "owner": "data-eng",
@@ -13,6 +14,8 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
     "retry_exponential_backoff": True,
     "max_retry_delay": timedelta(minutes=30),
+    # Fires after retries are exhausted; webhook-or-warn, see alerts.py.
+    "on_failure_callback": notify_failure,
 }
 
 

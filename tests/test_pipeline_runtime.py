@@ -775,7 +775,7 @@ def test_trino_exporter_collect_swallows_query_endpoint_errors(monkeypatch: pyte
 # DAG shape
 # ---------------------------------------------------------------------------
 
-def test_payments_pipeline_dag_has_expected_shape() -> None:
+def test_payments_pipeline_dag_has_expected_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeDAG:
         def __init__(self, *args, **kwargs) -> None:
             self.schedule_interval = kwargs.get("schedule")
@@ -820,6 +820,7 @@ def test_payments_pipeline_dag_has_expected_shape() -> None:
     sys.modules["airflow.operators.bash"] = bash_module
 
     module_path = Path(__file__).resolve().parents[1] / "airflow" / "dags" / "payments_pipeline.py"
+    monkeypatch.syspath_prepend(str(module_path.parent))  # so `from alerts import ...` resolves
     spec = importlib.util.spec_from_file_location("repo_payments_pipeline", module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
