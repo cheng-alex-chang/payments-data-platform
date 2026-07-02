@@ -121,19 +121,32 @@ def load_dataset(
 def connect_from_env() -> Any:
     """Open a Snowflake connection from SNOWFLAKE_* env vars.
 
+    Auth: if ``SNOWFLAKE_PRIVATE_KEY_PATH`` is set, use **key-pair** auth (the production
+    path -- Snowflake is deprecating single-factor passwords); otherwise fall back to
+    ``SNOWFLAKE_PASSWORD``. The private key never transits the environment, only its path.
+
     The driver is imported here -- not at module top -- so unit tests that only exercise the
     SQL builders never require ``snowflake-connector-python``.
     """
     import snowflake.connector  # lazy: keeps the mocked test suite driver-free
 
+    auth: dict[str, Any] = {}
+    private_key_path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
+    if private_key_path:
+        # expanduser: the connector reads the file verbatim and would not resolve '~'
+        auth["private_key_file"] = os.path.expanduser(private_key_path)
+    else:
+        LOGGER.warning("SNOWFLAKE_PRIVATE_KEY_PATH not set; falling back to password auth")
+        auth["password"] = os.environ["SNOWFLAKE_PASSWORD"]
+
     return snowflake.connector.connect(
         account=os.environ["SNOWFLAKE_ACCOUNT"],
         user=os.environ["SNOWFLAKE_USER"],
-        password=os.environ["SNOWFLAKE_PASSWORD"],
         role=os.getenv("SNOWFLAKE_ROLE", "PAYMENTS_ETL_ROLE"),
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "PAYMENTS_WH"),
         database=os.getenv("SNOWFLAKE_DATABASE", "PAYMENTS"),
         schema=os.getenv("SNOWFLAKE_SCHEMA", "RAW"),
+        **auth,
     )
 
 

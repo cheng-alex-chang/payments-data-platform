@@ -8,11 +8,11 @@ objects.
 
 ## Security
 
-- **Snowflake password auth → key-pair.** `load_to_snowflake.connect_from_env` authenticates with a
-  password; production should use key-pair (or OAuth/SSO), which Snowflake is moving toward
-  requiring.
 - **AWS credentials via env vars → IAM roles.** The S3 client relies on `AWS_*`; production should
   use IAM roles (instance profile / IRSA / `AssumeRole`) rather than long-lived access keys.
+- ~~Snowflake password auth~~ **Done:** key-pair auth is now the default path — the connector uses
+  `SNOWFLAKE_PRIVATE_KEY_PATH` (password only as fallback), dbt has a `trial_keypair` target, and
+  the Terraform provider documents `SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT`.
 
 ## Operations
 

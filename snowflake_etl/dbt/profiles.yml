@@ -1,14 +1,26 @@
 # Connection profile -- every value comes from env vars (no secrets in git; same
 # SNOWFLAKE_* contract as snowflake_etl/src/load_to_snowflake.connect_from_env).
-# Defaults keep `dbt parse` credential-free in CI; a real run needs ACCOUNT/USER/PASSWORD.
+# Two targets: `trial_keypair` (key-pair auth, the production path) and `trial`
+# (password fallback). Select with DBT_TARGET. Defaults keep `dbt parse`
+# credential-free in CI; a real run needs ACCOUNT/USER plus the key or password.
 payments_fx:
-  target: trial
+  target: "{{ env_var('DBT_TARGET', 'trial') }}"
   outputs:
     trial:
       type: snowflake
       account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'parse-only') }}"
       user: "{{ env_var('SNOWFLAKE_USER', 'parse-only') }}"
       password: "{{ env_var('SNOWFLAKE_PASSWORD', '') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'PAYMENTS_ETL_ROLE') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'PAYMENTS') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'PAYMENTS_WH') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'ANALYTICS') }}"
+      threads: 4
+    trial_keypair:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'parse-only') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', 'parse-only') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH', '~/.snowflake/rsa_key.p8') }}"
       role: "{{ env_var('SNOWFLAKE_ROLE', 'PAYMENTS_ETL_ROLE') }}"
       database: "{{ env_var('SNOWFLAKE_DATABASE', 'PAYMENTS') }}"
       warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'PAYMENTS_WH') }}"

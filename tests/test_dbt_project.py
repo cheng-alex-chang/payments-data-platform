@@ -97,6 +97,11 @@ def test_profiles_use_env_vars_only() -> None:
     output = parsed["payments_fx"]["outputs"]["trial"]
     assert output["password"].startswith("{{ env_var(")
 
+    # The key-pair target authenticates by key path only -- no password field at all.
+    keypair = parsed["payments_fx"]["outputs"]["trial_keypair"]
+    assert "password" not in keypair
+    assert keypair["private_key_path"].startswith("{{ env_var(")
+
 
 def test_materializations_match_the_old_runner() -> None:
     project = yaml.safe_load(_read("dbt_project.yml"))

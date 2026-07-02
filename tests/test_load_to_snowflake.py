@@ -66,6 +66,38 @@ def test_load_dataset_runs_ddl_then_copy_and_returns_rows() -> None:
     cursor.close.assert_called_once()  # cursor always closed, even though we asserted success
 
 
+def test_connect_uses_keypair_when_private_key_path_set(monkeypatch) -> None:  # noqa: ANN001
+    captured: dict = {}
+    connector = mock.MagicMock()
+    connector.connect = lambda **kw: captured.update(kw) or "CONN"
+    monkeypatch.setitem(__import__("sys").modules, "snowflake", mock.MagicMock(connector=connector))
+    monkeypatch.setitem(__import__("sys").modules, "snowflake.connector", connector)
+    monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "ORG-ACCT")
+    monkeypatch.setenv("SNOWFLAKE_USER", "u")
+    monkeypatch.setenv("SNOWFLAKE_PRIVATE_KEY_PATH", "/keys/rsa_key.p8")
+    monkeypatch.delenv("SNOWFLAKE_PASSWORD", raising=False)
+
+    assert module.connect_from_env() == "CONN"
+    assert captured["private_key_file"] == "/keys/rsa_key.p8"
+    assert "password" not in captured  # key-pair path never sends a password
+
+
+def test_connect_falls_back_to_password_without_key(monkeypatch) -> None:  # noqa: ANN001
+    captured: dict = {}
+    connector = mock.MagicMock()
+    connector.connect = lambda **kw: captured.update(kw) or "CONN"
+    monkeypatch.setitem(__import__("sys").modules, "snowflake", mock.MagicMock(connector=connector))
+    monkeypatch.setitem(__import__("sys").modules, "snowflake.connector", connector)
+    monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "ORG-ACCT")
+    monkeypatch.setenv("SNOWFLAKE_USER", "u")
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "pw")
+    monkeypatch.delenv("SNOWFLAKE_PRIVATE_KEY_PATH", raising=False)
+
+    assert module.connect_from_env() == "CONN"
+    assert captured["password"] == "pw"
+    assert "private_key_file" not in captured
+
+
 def test_main_dry_run_prints_sql_without_connecting(capsys) -> None:  # noqa: ANN001
     # connect_from_env would raise if called (no creds / no driver); dry-run must not call it.
     with mock.patch.object(module, "connect_from_env", side_effect=AssertionError("connected!")):

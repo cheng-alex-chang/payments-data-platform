@@ -1,7 +1,10 @@
 # Snowflake reads credentials from env vars. The 1.x provider wants the account *split*:
 # SNOWFLAKE_ORGANIZATION_NAME + SNOWFLAKE_ACCOUNT_NAME (the two halves of the ORG-ACCOUNT
-# identifier), plus SNOWFLAKE_USER / SNOWFLAKE_PASSWORD. No secrets live in the config.
-# Production should switch to key-pair auth -- see docs/production-readiness.md.
+# identifier), plus SNOWFLAKE_USER. No secrets live in the config.
+# Key-pair auth (preferred; the user's RSA public key is registered via ALTER USER):
+#   export SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT
+#   export SNOWFLAKE_PRIVATE_KEY=$(cat ~/.snowflake/rsa_key.p8)
+# Password fallback: export SNOWFLAKE_PASSWORD=...
 provider "snowflake" {
   role = var.snowflake_admin_role
 
