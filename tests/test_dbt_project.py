@@ -47,6 +47,14 @@ def test_staging_dedups_and_marts_use_refs() -> None:
     assert "ROUND(p.amount * d.rate_to_usd, 2) AS usd_amount" in fct
 
 
+def test_fct_is_incremental_with_watermark() -> None:
+    fct = _read("models/marts/fct_payments_usd.sql")
+    assert "materialized='incremental'" in fct
+    assert "unique_key='payment_id'" in fct          # MERGE key: re-runs upsert, never dupe
+    assert "{% if is_incremental() %}" in fct        # watermark filter only on re-runs
+    assert "MAX(updated_at)" in fct                  # high watermark from the fact itself
+
+
 def test_dim_fx_rates_forward_fills_gaps() -> None:
     dim = _read("models/marts/dim_fx_rates.sql")
     assert "LAST_VALUE(rate_to_usd) IGNORE NULLS" in dim   # carry last known rate forward

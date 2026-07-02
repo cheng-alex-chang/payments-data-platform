@@ -36,16 +36,37 @@ def connect_from_env() -> Any:
     )
 
 
-def fetch_payments(conn: Any, *, itersize: int = 5000) -> Iterator[dict]:
+def fetch_payments(
+    conn: Any,
+    *,
+    itersize: int = 5000,
+    updated_after: str | None = None,
+    updated_before: str | None = None,
+) -> Iterator[dict]:
     """Stream payments rows as dicts via a server-side cursor (bounded memory at any volume).
 
     A *named* cursor keeps the result set on the Postgres server and ships ``itersize`` rows
     per round trip, so extracting 50k (or 5M) rows never materializes them all client-side.
+
+    ``updated_after`` / ``updated_before`` bound the extract to a change window
+    (``updated_at >= after AND updated_at < before``) -- the incremental watermark. The DAG
+    passes Airflow's data interval; omitting both keeps the full-snapshot behavior.
     """
     columns = ", ".join(PAYMENT_COLUMNS)
+    where: list[str] = []
+    params: list[str] = []
+    if updated_after:
+        where.append("updated_at >= %s")
+        params.append(updated_after)
+    if updated_before:
+        where.append("updated_at < %s")
+        params.append(updated_before)
+    where_sql = f" WHERE {' AND '.join(where)}" if where else ""
     with conn.cursor(name="payments_extract") as cursor:
         cursor.itersize = itersize
-        cursor.execute(f"SELECT {columns} FROM payments ORDER BY payment_id")
+        cursor.execute(
+            f"SELECT {columns} FROM payments{where_sql} ORDER BY payment_id", params or None
+        )
         for row in cursor:
             yield dict(zip(PAYMENT_COLUMNS, row))
 

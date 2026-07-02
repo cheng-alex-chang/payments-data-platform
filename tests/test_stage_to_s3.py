@@ -78,3 +78,21 @@ def test_main_stages_only_requested_datasets(s3_client, monkeypatch) -> None:  #
     assert any("raw/fx_rates/dt=2026-06-29/" in k for k in keys)  # honors --run-date partition
     assert not any("raw/payments/" in k for k in keys)
     assert payments_called["v"] is False  # the unselected source never extracted
+
+
+def test_main_passes_incremental_window_to_payments(s3_client, monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(module, "s3_client_from_env", lambda: s3_client)
+    captured: dict = {}
+
+    def payments_factory(updated_after=None, updated_before=None):  # noqa: ANN001
+        captured["window"] = (updated_after, updated_before)
+        return [{"payment_id": 1, "amount": "9.99"}]
+
+    monkeypatch.setitem(module.DATASET_FACTORIES, "payments", payments_factory)
+
+    module.main([
+        "--bucket", BUCKET, "--datasets", "payments", "--run-date", "2026-06-30",
+        "--updated-after", "2026-06-30 00:00:00", "--updated-before", "2026-07-01 00:00:00",
+    ])
+
+    assert captured["window"] == ("2026-06-30 00:00:00", "2026-07-01 00:00:00")

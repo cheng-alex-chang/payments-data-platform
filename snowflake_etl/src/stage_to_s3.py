@@ -81,10 +81,14 @@ def _fx_records() -> Iterable[dict]:
     return (dataclasses.asdict(rate) for rate in extract_fx_rates.fetch_fx_rates(start, end))
 
 
-def _payment_records() -> Iterable[dict]:
+def _payment_records(
+    updated_after: str | None = None, updated_before: str | None = None
+) -> Iterable[dict]:
     conn = extract_payments.connect_from_env()
     try:
-        yield from extract_payments.fetch_payments(conn)
+        yield from extract_payments.fetch_payments(
+            conn, updated_after=updated_after, updated_before=updated_before
+        )
     finally:
         conn.close()
 
@@ -113,6 +117,17 @@ def main(argv: list[str] | None = None) -> None:
         help="Partition date YYYY-MM-DD (default: today). The DAG passes Airflow's {{ ds }}.",
     )
     parser.add_argument(
+        "--updated-after",
+        default=None,
+        help="Incremental watermark: only payments with updated_at >= this (the DAG passes "
+        "Airflow's data_interval_start). Omit for a full-snapshot extract.",
+    )
+    parser.add_argument(
+        "--updated-before",
+        default=None,
+        help="Upper bound of the change window (exclusive); pairs with --updated-after.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Serialize from real sources and print a sample, without touching S3",
@@ -120,9 +135,18 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     run_date = dt.date.fromisoformat(args.run_date) if args.run_date else None
 
+    def records_for(name: str) -> Iterable[dict]:
+        # The change window only applies to payments; FX is windowed by --start/--end
+        # in its own extractor and always staged in full here.
+        if name == "payments":
+            return DATASET_FACTORIES[name](
+                updated_after=args.updated_after, updated_before=args.updated_before
+            )
+        return DATASET_FACTORIES[name]()
+
     if args.dry_run:
         for name in args.datasets:
-            body, count = serialize_jsonl(DATASET_FACTORIES[name]())
+            body, count = serialize_jsonl(records_for(name))
             preview = body.decode("utf-8").splitlines()[:2]
             LOGGER.info("[dry-run] %s: %d rows, %d bytes", name, count, len(body))
             for line in preview:
@@ -133,7 +157,7 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("--bucket (or S3_BUCKET) is required when not in --dry-run")
     client = s3_client_from_env()
     for name in args.datasets:
-        stage_dataset(client, args.bucket, name, DATASET_FACTORIES[name](), run_date=run_date)
+        stage_dataset(client, args.bucket, name, records_for(name), run_date=run_date)
 
 
 if __name__ == "__main__":  # pragma: no cover

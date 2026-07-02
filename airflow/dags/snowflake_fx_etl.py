@@ -78,10 +78,22 @@ with DAG(
         stage_to_s3.main(args)
 
     @task(task_id="stage_payments")
-    def stage_payments(ds: str | None = None) -> None:
+    def stage_payments(
+        ds: str | None = None,
+        data_interval_start=None,  # noqa: ANN001 - pendulum, injected by Airflow
+        data_interval_end=None,  # noqa: ANN001
+    ) -> None:
         args = ["--bucket", S3_BUCKET, "--datasets", "payments"]
         if ds:
             args += ["--run-date", ds]
+        # Incremental watermark: extract only the payments updated inside this run's data
+        # interval. On a manual trigger (schedule=None) start == end, which would select
+        # nothing -- fall back to the full snapshot in that case.
+        if data_interval_start and data_interval_end and data_interval_start < data_interval_end:
+            args += [
+                "--updated-after", data_interval_start.strftime("%Y-%m-%d %H:%M:%S"),
+                "--updated-before", data_interval_end.strftime("%Y-%m-%d %H:%M:%S"),
+            ]
         stage_to_s3.main(args)
 
     load_raw = SnowflakeOperator(

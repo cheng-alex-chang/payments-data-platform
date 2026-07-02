@@ -13,6 +13,7 @@ class _FakeCursor:
         self._rows = rows
         self.itersize: int | None = None
         self.executed: str | None = None
+        self.params: object = None
 
     def __enter__(self) -> "_FakeCursor":
         return self
@@ -20,8 +21,9 @@ class _FakeCursor:
     def __exit__(self, *exc: object) -> bool:
         return False
 
-    def execute(self, sql: str) -> None:
+    def execute(self, sql: str, params: object = None) -> None:
         self.executed = sql
+        self.params = params
 
     def __iter__(self):  # noqa: ANN204
         return iter(self._rows)
@@ -58,6 +60,20 @@ def test_fetch_payments_yields_dicts_via_named_cursor() -> None:
     assert set(rows[0]) == set(module.PAYMENT_COLUMNS)  # every column mapped
     assert conn.last_cursor.itersize == 123               # server-side batch size applied
     assert "FROM payments ORDER BY payment_id" in conn.last_cursor.executed
+    assert conn.last_cursor.params is None                # no bounds -> full snapshot
+
+
+def test_fetch_payments_incremental_window_is_parameterized() -> None:
+    conn = _FakeConn([_row(1, "EUR")])
+
+    list(module.fetch_payments(
+        conn, updated_after="2026-06-30 00:00:00", updated_before="2026-07-01 00:00:00"
+    ))
+
+    sql = conn.last_cursor.executed
+    # Bounds go through placeholders (never interpolated), half-open interval [after, before).
+    assert "WHERE updated_at >= %s AND updated_at < %s" in sql
+    assert conn.last_cursor.params == ["2026-06-30 00:00:00", "2026-07-01 00:00:00"]
 
 
 def test_connect_from_env_reads_pg_env(monkeypatch) -> None:  # noqa: ANN001
