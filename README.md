@@ -3,7 +3,7 @@
 A payments data-engineering project that runs **both** dominant analytics paradigms over one domain:
 
 - **Streaming lakehouse (operational):** `Postgres → Debezium/Kafka Connect → Kafka → PySpark → Iceberg on HDFS → Trino` — near-real-time CDC on an open table format.
-- **Batch cloud warehouse (financial):** `FX REST API + Postgres → AWS S3 → Snowflake ELT` — daily batch that normalizes every payment to USD for cross-currency analytics.
+- **Batch cloud warehouse (financial):** `FX REST API + Postgres → AWS S3 → Snowflake + dbt` — incremental batch ELT that normalizes every payment to USD for cross-currency analytics over a star schema.
 
 Shared across both: `Airflow` orchestration, `Terraform` governance (Databricks + Snowflake/S3), `Hive Metastore` as the Iceberg catalog, `Metabase` ad-hoc dashboards, `Prometheus + Grafana` monitoring, and `pytest` + GitHub Actions CI.
 
@@ -41,7 +41,7 @@ Postgres
 FX REST API + Postgres
   -> stage_to_s3                         newline-JSON to S3, partitioned by dt
   -> Snowflake COPY INTO                 RAW VARIANT landing tables
-  -> Snowflake SQL ELT                   stg -> dim_fx_rates (forward-fill) -> fct_payments_usd
+  -> dbt ELT                             stg -> dim_date / dim_fx_rates -> fct_payments_usd (incremental)
   -> agg_payments_by_currency            monthly USD-normalized volume + FX drift
 ```
 
@@ -177,14 +177,14 @@ Verified on Databricks Free Edition: the Delta tables reconcile 124 → 124 → 
 
 ## Snowflake FX ELT (batch + cloud warehouse)
 
-A second ingestion pipeline runs the other dominant paradigm — **batch into a cloud warehouse** — over the same payments domain. A pull-based **FX-rates REST API** (Frankfurter / ECB) and the Postgres payments table are staged to **AWS S3** as date-partitioned JSON, loaded into **Snowflake** `RAW` VARIANT tables with `COPY INTO`, then transformed in **Snowflake SQL (ELT)** that forward-fills weekend/holiday FX gaps and normalizes every payment to USD:
+A second ingestion pipeline runs the other dominant paradigm — **batch into a cloud warehouse** — over the same payments domain. A pull-based **FX-rates REST API** (Frankfurter / ECB) and the Postgres payments table (extracted **incrementally** by `updated_at` watermark) are staged to **AWS S3** as date-partitioned JSON, loaded into **Snowflake** `RAW` VARIANT tables with `COPY INTO`, then transformed by a **dbt** ELT — a Kimball-style star schema whose FX dimension forward-fills weekend/holiday gaps and whose incremental fact normalizes every payment to USD:
 
 ```text
 FX REST API + Postgres → S3 (raw/<dataset>/dt=…) → Snowflake RAW (VARIANT)
   → stg_* → dim_fx_rates (forward-fill) → fct_payments_usd (amount × rate) → agg_payments_by_currency
 ```
 
-It's orchestrated by an Airflow DAG (`airflow/dags/snowflake_fx_etl.py`) using TaskFlow `@task` for the S3 staging and `SnowflakeOperator` (via a managed `snowflake_default` connection) for the SQL, and governed by **Terraform** (`infra/terraform/snowflake/`): database, RAW/ANALYTICS schemas, an XS auto-suspend warehouse, a least-privilege role, and the AWS↔Snowflake wiring (S3 bucket + storage integration + external stage). This is a deliberate **two-tier** design, not a duplicate of the lakehouse: the lakehouse serves *hourly operational* analytics; Snowflake serves *monthly, USD-normalized* financials.
+It's orchestrated by an Airflow DAG (`airflow/dags/snowflake_fx_etl.py`) using TaskFlow `@task` for the S3 staging, `SnowflakeOperator` (managed `snowflake_default` connection) for the RAW load, and `dbt run` / `dbt test` for the transform + data-quality gates, with webhook failure alerting on both DAGs. **Terraform** (`infra/terraform/snowflake/`, remote S3 state) governs the database, RAW/ANALYTICS schemas, an XS auto-suspend warehouse, a least-privilege role, and the AWS↔Snowflake wiring (S3 bucket + storage integration + external stage); Snowflake auth is **key-pair** (password only as fallback). This is a deliberate **two-tier** design, not a duplicate of the lakehouse: the lakehouse serves *hourly operational* analytics; Snowflake serves *monthly, USD-normalized* financials.
 
 Everything is verifiable offline (mocked S3, fake Snowflake cursor, `terraform validate`); the live load against a Snowflake 30-day trial + S3 Free Tier is a one-session activity that's then torn down. **Verified live:** `stage → COPY INTO → ELT` reconciles **50,004 == 50,004** payments with all four data-quality gates passing, yielding **$13.5M** in USD-normalized volume across 6 currencies. See **[snowflake_etl/README.md](snowflake_etl/README.md)** for the architecture, run commands, test tiers, and trial caveat, and [docs/production-readiness.md](docs/production-readiness.md) for the hardening backlog.
 
@@ -300,6 +300,6 @@ The batch pipeline normalizes every payment to USD in Snowflake. Native volume i
 
 ![Snowflake bar chart of USD-normalized payment volume by currency](docs/images/snowflake-usd-by-currency.png)
 
-The pipeline itself: two sources staged to S3, loaded into Snowflake RAW, and transformed to USD in Snowflake SQL.
+The pipeline itself: two sources staged to S3, loaded into Snowflake RAW, and transformed to USD by dbt.
 
-![Snowflake FX ELT architecture — FX REST API and Postgres staged to S3, loaded to Snowflake RAW, transformed by SQL ELT to USD analytics](docs/images/architecture-snowflake-elt.svg)
+![Snowflake FX ELT architecture — FX REST API and Postgres staged to S3, loaded to Snowflake RAW, transformed by a dbt ELT to USD analytics](docs/images/architecture-snowflake-elt.svg)

@@ -118,7 +118,7 @@ A second pipeline runs the batch-into-a-warehouse paradigm over the same payment
 FX REST API (ECB/Frankfurter) ─┐
                                ├─ stage_to_s3 → S3 raw/<dataset>/dt=<date>/*.jsonl
 Postgres payments ─────────────┘                    └─ COPY INTO → RAW.* (VARIANT)
-                                                          └─ Snowflake SQL → ANALYTICS.*
+                                                          └─ dbt ELT → ANALYTICS.*
 ```
 
 ### Layer contracts
@@ -133,11 +133,11 @@ Postgres payments ─────────────┘                    
 
 ### Orchestration & governance
 
-The DAG `snowflake_fx_etl` stages the two sources to S3 in parallel (TaskFlow `@task`), fans into the RAW load and the SQL transform (`SnowflakeOperator` over a managed `snowflake_default` connection), and ends on the validation gate. Terraform (`infra/terraform/snowflake/`) owns the database, schemas, warehouse, role/grants, and the AWS↔Snowflake storage integration + external stage — the same infra-vs-workload split as the Databricks port.
+The DAG `snowflake_fx_etl` stages the two sources to S3 in parallel (TaskFlow `@task`; payments extracted **incrementally** by `updated_at` over Airflow's data interval, full snapshot on manual triggers), fans into the RAW load (`SnowflakeOperator` over a managed `snowflake_default` connection), then `dbt run` builds the star schema (the fact is a dbt **incremental** model MERGEd by `payment_id` past a `MAX(updated_at)` watermark) and `dbt test` asserts the data-quality gates. Both DAGs alert on failure via a configurable webhook (`airflow/dags/alerts.py`). Snowflake auth is key-pair (`SNOWFLAKE_PRIVATE_KEY_PATH`; password fallback). Terraform (`infra/terraform/snowflake/`, remote S3 state with native lockfile) owns the database, schemas, warehouse, role/grants, and the AWS↔Snowflake storage integration + external stage — the same infra-vs-workload split as the Databricks port.
 
 ### Known limitations
 
-Tracked in [production-readiness.md](production-readiness.md): password auth (→ key-pair), env-based AWS creds (→ IAM roles), DAG failure alerting, remote Terraform state, and data-contract enforcement. The live load is run once against a Snowflake 30-day trial + S3 Free Tier for evidence, then torn down; the code persists and is otherwise verified offline (mocked S3, fake cursor, `terraform validate`).
+Tracked in [production-readiness.md](production-readiness.md): env-based AWS creds (→ IAM roles) and data-contract enforcement at the ingestion boundary. (Key-pair auth, DAG alerting, and remote Terraform state are done.) The live load is run once against a Snowflake 30-day trial + S3 Free Tier for evidence, then torn down; the code persists and is otherwise verified offline (mocked S3, fake cursor, `terraform validate`).
 
 ## Monitoring
 

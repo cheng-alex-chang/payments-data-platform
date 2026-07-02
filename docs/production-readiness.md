@@ -16,11 +16,13 @@ objects.
 
 ## Operations
 
-- **Remote Terraform state.** State is local; a team/production setup needs a remote backend
-  (S3 + DynamoDB lock) so applies are shared and locked.
 - ~~DAG failure alerting~~ **Done:** both DAGs wire `on_failure_callback` to a webhook notifier
   (`airflow/dags/alerts.py`) — POSTs to `ALERT_WEBHOOK_URL` (Slack-compatible) when set, logs a
   warning and no-ops when unset, and never raises.
+- ~~Remote Terraform state~~ **Done:** the Snowflake module's state lives in a versioned,
+  public-access-blocked S3 bucket with S3-native locking (`use_lockfile`, TF ≥ 1.10 — no
+  DynamoDB table). The state bucket itself is bootstrapped outside Terraform (chicken-and-egg).
+  The Databricks module stays on local state (free-edition scope).
 
 ## Data
 

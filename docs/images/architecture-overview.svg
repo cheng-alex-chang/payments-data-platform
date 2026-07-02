@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 520" role="img" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <title>Payments Data Platform architecture</title>
-  <desc>A shared Postgres payments source feeds two pipelines: a streaming lakehouse (Debezium/Kafka to Spark medallion to Iceberg on HDFS to Trino) for operational analytics, and a batch warehouse (stage to AWS S3 to Snowflake RAW to SQL ELT to USD analytics) for financial analytics. Airflow orchestrates, Terraform governs, Prometheus and Grafana observe.</desc>
+  <desc>A shared Postgres payments source feeds two pipelines: a streaming lakehouse (Debezium/Kafka to Spark medallion to Iceberg on HDFS to Trino) for operational analytics, and a batch warehouse (stage to AWS S3 to Snowflake RAW to dbt ELT to USD analytics) for financial analytics. Airflow orchestrates, Terraform governs, Prometheus and Grafana observe.</desc>
   <defs>
     <marker id="ao" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker>
   </defs>
@@ -48,7 +48,7 @@
   <text x="466" y="412" text-anchor="middle" font-size="11" fill="#64748b">COPY INTO</text>
 
   <rect x="572" y="368" width="150" height="60" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.5"/>
-  <text x="647" y="394" text-anchor="middle" font-size="13.5" font-weight="600" fill="#134e4a">SQL ELT</text>
+  <text x="647" y="394" text-anchor="middle" font-size="13.5" font-weight="600" fill="#134e4a">dbt ELT</text>
   <text x="647" y="412" text-anchor="middle" font-size="11" fill="#64748b">dim &#183; fct &#183; agg</text>
 
   <rect x="748" y="368" width="160" height="60" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.8"/>
