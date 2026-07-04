@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 400" role="img" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <title>Scale benchmark — dbt build time by model, staging view vs table</title>
+  <desc>At 1.06 TB (4.2 billion rows) the dbt star schema builds and passes all 12 data-quality gates. Materializing the staging dedup as a table instead of a view cuts the dim_date build from 570.9s to 10.7s (54x) and fct_payments_usd from 525.3s to 209.6s (2.5x), because a view re-runs the dedup for every downstream consumer while a table pays it once.</desc>
+
+  <rect x="0.5" y="0.5" width="759" height="399" rx="14" fill="#ffffff" stroke="#e2e8f0"/>
+
+  <text x="36" y="44" font-size="21" font-weight="700" fill="#0f172a">Scale benchmark &#8212; build time by model</text>
+  <text x="36" y="67" font-size="13" fill="#64748b">dbt star schema at 1.06 TB (4.2B rows) &#183; 12/12 data-quality gates pass &#183; Medium warehouse</text>
+
+  <!-- legend -->
+  <rect x="500" y="88" width="14" height="14" rx="3" fill="#94a3b8"/>
+  <text x="520" y="100" font-size="12.5" fill="#334155">staging = view</text>
+  <rect x="612" y="88" width="14" height="14" rx="3" fill="#2563eb"/>
+  <text x="632" y="100" font-size="12.5" fill="#334155">staging = table</text>
+
+  <!-- x baseline + ticks (scale: 0.9 px per second, plot x0=170) -->
+  <line x1="170" y1="128" x2="170" y2="330" stroke="#e2e8f0" stroke-width="1"/>
+  <line x1="440" y1="128" x2="440" y2="330" stroke="#f1f5f9" stroke-width="1"/>
+  <line x1="710" y1="128" x2="710" y2="330" stroke="#f1f5f9" stroke-width="1"/>
+  <text x="170" y="348" text-anchor="middle" font-size="10.5" fill="#94a3b8">0s</text>
+  <text x="440" y="348" text-anchor="middle" font-size="10.5" fill="#94a3b8">300s</text>
+  <text x="710" y="348" text-anchor="middle" font-size="10.5" fill="#94a3b8">600s</text>
+
+  <!-- dim_date group -->
+  <text x="36" y="162" font-size="13.5" font-weight="600" fill="#0f172a">dim_date</text>
+  <rect x="170" y="140" width="514" height="20" rx="3" fill="#94a3b8"/>
+  <text x="690" y="155" font-size="12" font-weight="600" fill="#475569">570.9s</text>
+  <rect x="170" y="166" width="10" height="20" rx="3" fill="#2563eb"/>
+  <text x="188" y="181" font-size="12" font-weight="600" fill="#2563eb">10.7s</text>
+  <text x="250" y="181" font-size="12.5" font-weight="700" fill="#16a34a">54&#215; faster</text>
+
+  <!-- fct_payments_usd group -->
+  <text x="36" y="234" font-size="13.5" font-weight="600" fill="#0f172a">fct_payments_usd</text>
+  <rect x="170" y="212" width="473" height="20" rx="3" fill="#94a3b8"/>
+  <text x="649" y="227" font-size="12" font-weight="600" fill="#475569">525.3s</text>
+  <rect x="170" y="238" width="189" height="20" rx="3" fill="#2563eb"/>
+  <text x="365" y="253" font-size="12" font-weight="600" fill="#2563eb">209.6s</text>
+  <text x="440" y="253" font-size="12.5" font-weight="700" fill="#16a34a">2.5&#215; faster</text>
+
+  <!-- caption -->
+  <rect x="36" y="360" width="688" height="26" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="180" y="377" font-size="12" fill="#475569">A staging <tspan font-weight="600">view</tspan> re-runs the 4.4B-row dedup for every consumer; a <tspan font-weight="600">table</tspan> pays it once. Full build 1126s &#8594; 736s.</text>
+</svg>

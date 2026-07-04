@@ -11,9 +11,15 @@ test-paths: ["tests"]
 
 # Match what the hand-rolled runner built: staging as views, marts as tables,
 # everything in the ANALYTICS schema (the profile's schema; no custom suffixing).
+#
+# Staging materialization is configurable via DBT_STAGING_MATERIALIZED (default `view`).
+# At small scale a view is free and always fresh. At TB scale a view is re-evaluated by
+# EVERY downstream consumer — each re-runs the QUALIFY dedup over all raw rows — so the
+# scale-correct choice is `table` (materialize the dedup once, read it many times). The
+# benchmark measures both; see docs/scale-benchmark.md.
 models:
   payments_fx:
     staging:
-      +materialized: view
+      +materialized: "{{ env_var('DBT_STAGING_MATERIALIZED', 'view') }}"
     marts:
       +materialized: table

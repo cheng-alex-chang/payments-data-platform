@@ -188,6 +188,10 @@ It's orchestrated by an Airflow DAG (`airflow/dags/snowflake_fx_etl.py`) using T
 
 Everything is verifiable offline (mocked S3, fake Snowflake cursor, `terraform validate`); the live load against a Snowflake 30-day trial + S3 Free Tier is a one-session activity that's then torn down. **Verified live:** `stage → COPY INTO → ELT` reconciles **50,004 == 50,004** payments with all four data-quality gates passing, yielding **$13.5M** in USD-normalized volume across 6 currencies. See **[snowflake_etl/README.md](snowflake_etl/README.md)** for the architecture, run commands, test tiers, and trial caveat, and [docs/production-readiness.md](docs/production-readiness.md) for the hardening backlog.
 
+**Scale-tested to ~1 TB.** The same dbt project was benchmarked at **4.2 billion payments / 1.06 TB** of logical JSON, generated in-warehouse with `GENERATOR` — all **12 gates pass**, a 5M-row daily increment reconciles exactly, and the run quantifies the fix for the staging-view rescan bottleneck (`dim_date` build **9.5 min → 11s** when staging is materialized as a table). Full write-up: **[docs/scale-benchmark.md](docs/scale-benchmark.md)**.
+
+![Scale benchmark build time by model — staging view vs table at 1.06 TB](docs/images/scale-benchmark-build-times.svg)
+
 ## Airflow Pipeline
 
 The main DAG is `airflow/dags/payments_pipeline.py`.

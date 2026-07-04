@@ -151,3 +151,14 @@ evidence then torn down; the code persists. That's why the Snowflake integration
 
 See [docs/production-readiness.md](../docs/production-readiness.md) for the hardening backlog
 (key-pair auth, IAM roles, DAG alerting, remote Terraform state, …).
+
+## Scale benchmark (~1 TB)
+
+The same dbt project, unchanged, was benchmarked at **4.2 billion payments / 1.06 TB** of
+logical JSON — generated **in-warehouse** with `GENERATOR` (no laptop, no S3) into an
+isolated `PAYMENTS_SCALE` db. All **12 data-quality gates pass** at that scale, a 5M-row
+daily increment reconciles exactly, and the benchmark surfaces the real bottleneck: staging
+**views** re-run the dedup per consumer, so materializing staging as a **table**
+(`DBT_STAGING_MATERIALIZED=table`) cuts the `dim_date` build from **9.5 min to 11s**. Full
+method, numbers, and limitations: [docs/scale-benchmark.md](../docs/scale-benchmark.md).
+The runner is [snowflake_etl/benchmark/scale_benchmark.py](benchmark/scale_benchmark.py).
