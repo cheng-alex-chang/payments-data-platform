@@ -43,7 +43,7 @@ python -m snowflake_etl.benchmark.scale_benchmark teardown
 |---|---|
 | Raw payment rows | **4,410,000,000** (4.2B base + 210M duplicate versions) |
 | Logical JSON size | **1.06 TB** (`SUM(LENGTH(TO_JSON(raw)))`) |
-| Compressed on disk | **~70 GB** (~15× Snowflake columnar compression) |
+| Compressed on disk | **~79 GB** (~13.5× Snowflake columnar compression; settled `TABLE_STORAGE_METRICS` value — the ~70 GB read at run time was the view still lagging) |
 | Distinct payments in fact | **4,200,000,000** (dedup collapses the 210M duplicates) |
 | FX rows | 1,572 (business days × 6 currencies over 12 months) |
 | Generation time | 20.6 min (~52s per 250M-row chunk, 17 chunks) |

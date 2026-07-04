@@ -139,6 +139,14 @@ def test_measure_reports_logical_json_bytes() -> None:
     assert "PAYMENTS_SCALE.RAW.RAW_PAYMENTS" in sql
 
 
+def test_storage_sql_scopes_to_the_database() -> None:
+    # TABLE_STORAGE_METRICS returns rows for other databases the role can see, so the
+    # catalog filter is what keeps the demo and scale databases out of each other's report.
+    sql = sb.storage_sql("PAYMENTS_SCALE")
+    assert "TABLE_CATALOG = 'PAYMENTS_SCALE'" in sql
+    assert "TABLE_DROPPED IS NULL" in sql
+
+
 def test_report_scopes_to_the_benchmark_warehouse() -> None:
     sql = sb.report_sql("BENCH_WH")
     assert "QUERY_HISTORY_BY_WAREHOUSE" in sql

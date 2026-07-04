@@ -243,9 +243,12 @@ def storage_sql(database: str) -> str:
     return (
         "SELECT TABLE_NAME, ACTIVE_BYTES\n"
         f"FROM {database}.INFORMATION_SCHEMA.TABLE_STORAGE_METRICS\n"
+        # TABLE_CATALOG: unlike most INFORMATION_SCHEMA views, TABLE_STORAGE_METRICS
+        # returns rows for OTHER databases the role can see (verified live), so without
+        # this filter `measure` mixes the demo and scale databases into one listing.
         # TABLE_DROPPED IS NULL excludes prior table versions still held in Time-Travel/
         # Fail-safe after a TRUNCATE, which otherwise show up as stale duplicate rows.
-        "WHERE TABLE_SCHEMA = 'RAW' AND TABLE_DROPPED IS NULL"
+        f"WHERE TABLE_CATALOG = '{database}' AND TABLE_SCHEMA = 'RAW' AND TABLE_DROPPED IS NULL"
     )
 
 
