@@ -184,6 +184,8 @@ FX REST API + Postgres → S3 (raw/<dataset>/dt=…) → Snowflake RAW (VARIANT)
   → stg_* → dim_fx_rates (forward-fill) → fct_payments_usd (amount × rate) → agg_payments_by_currency
 ```
 
+![Live dbt run and test against Snowflake — 6 models built, 12 of 12 data-quality gates pass](docs/images/dbt-live-demo.gif)
+
 It's orchestrated by an Airflow DAG (`airflow/dags/snowflake_fx_etl.py`) using TaskFlow `@task` for the S3 staging, `SnowflakeOperator` (managed `snowflake_default` connection) for the RAW load, and `dbt run` / `dbt test` for the transform + data-quality gates, with webhook failure alerting on both DAGs. **Terraform** (`infra/terraform/snowflake/`, remote S3 state) governs the database, RAW/ANALYTICS schemas, an XS auto-suspend warehouse, a least-privilege role, and the AWS↔Snowflake wiring (S3 bucket + storage integration + external stage); Snowflake auth is **key-pair** (password only as fallback). This is a deliberate **two-tier** design, not a duplicate of the lakehouse: the lakehouse serves *hourly operational* analytics; Snowflake serves *monthly, USD-normalized* financials.
 
 Everything is verifiable offline (mocked S3, fake Snowflake cursor, `terraform validate`); the live load against a Snowflake 30-day trial + S3 Free Tier is a one-session activity that's then torn down. **Verified live:** `stage → COPY INTO → ELT` reconciles **50,004 == 50,004** payments with all four data-quality gates passing, yielding **$13.5M** in USD-normalized volume across 6 currencies. See **[snowflake_etl/README.md](snowflake_etl/README.md)** for the architecture, run commands, test tiers, and trial caveat, and [docs/production-readiness.md](docs/production-readiness.md) for the hardening backlog.
