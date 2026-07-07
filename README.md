@@ -1,5 +1,7 @@
 # Payments Data Platform
 
+**Live site:** [cheng-alex-chang.github.io/payments-data-platform](https://cheng-alex-chang.github.io/payments-data-platform/) — visual tour + hosted dbt lineage browser.
+
 A payments data-engineering project that runs **both** dominant analytics paradigms over one domain:
 
 - **Streaming lakehouse (operational):** `Postgres → Debezium/Kafka Connect → Kafka → PySpark → Iceberg on HDFS → Trino` — near-real-time CDC on an open table format.

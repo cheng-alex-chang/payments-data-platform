@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payments Data Platform — CDC lakehouse + Snowflake ELT, scale-tested to ~1 TB</title>
+<meta name="description" content="A dual-pipeline payments data platform: a replay-safe streaming CDC lakehouse (Debezium, Kafka, Spark, Iceberg, Trino) and a batch Snowflake ELT with a dbt star schema, scale-tested at 4.2 billion rows / ~1 TB.">
+<style>
+  :root {
+    --ink: #0f172a;
+    --body: #475569;
+    --muted: #64748b;
+    --accent: #2563eb;
+    --panel: #f8fafc;
+    --line: #e2e8f0;
+    --good: #16a34a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--body); background: #ffffff; line-height: 1.6;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+
+  /* hero */
+  .hero { background: var(--ink); color: #e2e8f0; padding: 72px 0 64px; }
+  .hero h1 { color: #ffffff; font-size: 2.3rem; line-height: 1.2; letter-spacing: -0.02em; }
+  .hero p.tag { margin: 18px 0 8px; font-size: 1.15rem; color: #cbd5e1; max-width: 46em; }
+  .hero p.sub { color: #94a3b8; font-size: 0.98rem; max-width: 46em; }
+  .btns { margin-top: 28px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 10px 18px; border-radius: 8px; font-weight: 600;
+    font-size: 0.95rem; border: 1px solid transparent;
+  }
+  .btn.primary { background: var(--accent); color: #ffffff; }
+  .btn.primary:hover { background: #1d4ed8; text-decoration: none; }
+  .btn.ghost { border-color: #334155; color: #e2e8f0; }
+  .btn.ghost:hover { border-color: #64748b; text-decoration: none; }
+
+  /* numbers band */
+  .numbers { border-bottom: 1px solid var(--line); background: var(--panel); }
+  .numbers .wrap { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 28px 24px; }
+  .num { text-align: center; padding: 8px 4px; }
+  .num b { display: block; color: var(--ink); font-size: 1.45rem; letter-spacing: -0.01em; }
+  .num span { font-size: 0.82rem; color: var(--muted); }
+
+  /* sections */
+  section { padding: 56px 0 8px; }
+  section h2 { color: var(--ink); font-size: 1.5rem; letter-spacing: -0.01em; margin-bottom: 6px; }
+  section p.lead { max-width: 56em; margin-bottom: 18px; }
+  .card {
+    background: #ffffff; border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px; margin: 18px 0;
+  }
+  .card img, .card object { width: 100%; height: auto; display: block; border-radius: 8px; }
+  .caption { font-size: 0.88rem; color: var(--muted); margin-top: 10px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+
+  /* chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
+  .chip {
+    background: var(--panel); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 999px; padding: 5px 14px; font-size: 0.85rem; font-weight: 500;
+  }
+
+  footer { margin-top: 56px; border-top: 1px solid var(--line); padding: 28px 0 40px;
+           font-size: 0.9rem; color: var(--muted); }
+
+  @media (max-width: 700px) {
+    .hero h1 { font-size: 1.7rem; }
+    .numbers .wrap { grid-template-columns: repeat(2, 1fr); }
+    .two-col, .shots { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <h1>Payments Data Platform</h1>
+    <p class="tag">One payments domain, both dominant data paradigms: a <strong>replay-safe streaming CDC lakehouse</strong> and a <strong>batch Snowflake ELT</strong> with a Kimball star schema — <strong>scale-tested at 4.2&nbsp;billion rows / ~1&nbsp;TB</strong>.</p>
+    <p class="sub">Postgres → Debezium/Kafka → Spark → Iceberg/Trino for hourly operational analytics; Postgres + FX API → S3 → Snowflake → dbt for USD-normalized financials.</p>
+    <div class="btns">
+      <a class="btn primary" href="https://github.com/cheng-alex-chang/payments-data-platform">View on GitHub</a>
+      <a class="btn ghost" href="https://github.com/cheng-alex-chang/payments-data-platform/blob/main/docs/scale-benchmark.md">1&nbsp;TB benchmark write-up</a>
+      <a class="btn ghost" href="./dbt-docs/">dbt lineage browser</a>
+    </div>
+  </div>
+</div>
+
+<div class="numbers">
+  <div class="wrap">
+    <div class="num"><b>4.2B</b><span>distinct payments in the fact table at 1.06&nbsp;TB</span></div>
+    <div class="num"><b>12/12</b><span>data-quality gates pass at full scale</span></div>
+    <div class="num"><b>54×</b><span>dim_date build speedup — staging view&nbsp;→&nbsp;table</span></div>
+    <div class="num"><b>5M</b><span>rows processed by a daily increment — not 4.2B</span></div>
+    <div class="num"><b>50,004 = 50,004</b><span>live S3&nbsp;→&nbsp;Snowflake reconciliation</span></div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <section>
+    <h2>Architecture — two pipelines, two jobs</h2>
+    <p class="lead">A shared Postgres payments source feeds both tiers. The <strong>streaming lakehouse</strong> proves change-data-capture correctness: every insert, update, and delete replays safely into Iceberg through checkpointed Spark jobs. The <strong>batch warehouse</strong> proves analytical modeling: incremental extraction, raw VARIANT landing, and a tested dbt star schema.</p>
+    <div class="card">
+      <img src="images/architecture-overview.svg" alt="Platform architecture: Postgres feeding a streaming CDC lakehouse (Debezium, Kafka, Spark, Iceberg, Trino) and a batch Snowflake warehouse (S3, COPY INTO, dbt)">
+      <p class="caption">The full platform: CDC lakehouse (top path) for hourly operational analytics, Snowflake ELT (bottom path) for monthly USD-normalized financials.</p>
+    </div>
+    <div class="card">
+      <img src="images/architecture-snowflake-elt.svg" alt="Snowflake ELT architecture: FX REST API and Postgres staged to S3 as date-partitioned JSON, loaded to Snowflake RAW VARIANT tables, transformed by dbt into a star schema">
+      <p class="caption">The warehouse tier: incremental watermark extraction → date-partitioned S3 staging → <code>COPY INTO</code> RAW → dbt staging/dims/fact/aggregate, with 12 data-quality gates.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Live: the dbt build in action</h2>
+    <p class="lead">A real run against Snowflake — six star-schema models build and all twelve data-quality gates pass, ending in <span style="color:var(--good); font-weight:600;">PASS=12 ERROR=0</span>.</p>
+    <div class="card">
+      <img src="images/dbt-live-demo.gif" alt="Animated terminal: dbt run builds 6 models, dbt test passes 12 of 12 data-quality gates against Snowflake">
+    </div>
+  </section>
+
+  <section>
+    <h2>The ~1 TB scale story</h2>
+    <p class="lead">The same dbt project, unchanged, was benchmarked against <strong>4.2&nbsp;billion synthetic payments (1.06&nbsp;TB of logical JSON)</strong> generated server-side in Snowflake. All 12 gates passed, a 5M-row daily increment reconciled exactly — and the run surfaced a real bottleneck: staging materialized as a view re-runs its 4.4B-row dedup for every consumer. Flipping one configurable knob (<code>DBT_STAGING_MATERIALIZED=table</code>) pays the dedup once and cuts the conformed-dimension build <strong>54×</strong>.</p>
+    <div class="card">
+      <img src="images/scale-benchmark-build-times.svg" alt="Bar chart: dim_date build 570.9s as a view vs 10.7s with staging as a table (54x); fct_payments_usd 525.3s vs 209.6s (2.5x)">
+      <p class="caption">Full method, results, and stated limitations in the <a href="https://github.com/cheng-alex-chang/payments-data-platform/blob/main/docs/scale-benchmark.md">benchmark write-up</a>.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>The star schema</h2>
+    <p class="lead">Kimball dimensional model: one row per payment in the fact, USD-normalized via an FX dimension that forward-fills weekend and holiday rate gaps; a conformed date dimension; tested grain and uniqueness. Explore it interactively in the <a href="./dbt-docs/">hosted dbt lineage browser</a>.</p>
+    <div class="card">
+      <img src="images/star-schema-fx.svg" alt="Star schema ERD: fct_payments_usd at the center with dim_date and dim_fx_rates, fed by staging views over RAW">
+    </div>
+  </section>
+
+  <section>
+    <h2>The pipelines in action</h2>
+    <div class="shots">
+      <div class="card">
+        <img src="images/airflow-payments-pipeline.png" alt="Airflow DAG run for the payments CDC pipeline">
+        <p class="caption"><strong>Airflow</strong> — the CDC DAG: bronze → silver → gold with validation and alerting.</p>
+      </div>
+      <div class="card">
+        <img src="images/grafana-payments-demo-overview.png" alt="Grafana dashboard of payment volume, authorization rate, refunds and payment mix">
+        <p class="caption"><strong>Grafana</strong> — operational dashboard reading Iceberg gold tables through Trino.</p>
+      </div>
+      <div class="card">
+        <img src="images/trino-gold-metrics-query.png" alt="Trino query results over the payment_metrics_gold Iceberg table">
+        <p class="caption"><strong>Trino</strong> — federated SQL over the Iceberg lakehouse.</p>
+      </div>
+      <div class="card">
+        <img src="images/snowflake-usd-by-currency.png" alt="Snowflake chart of USD-normalized payment volume by currency">
+        <p class="caption"><strong>Snowflake</strong> — USD-normalized volume by currency from the star schema.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Stack</h2>
+    <div class="chips">
+      <span class="chip">Python</span><span class="chip">SQL</span><span class="chip">Kafka (KRaft)</span>
+      <span class="chip">Debezium CDC</span><span class="chip">Spark Structured Streaming</span>
+      <span class="chip">Apache Iceberg</span><span class="chip">Trino</span><span class="chip">Airflow</span>
+      <span class="chip">dbt</span><span class="chip">Snowflake</span><span class="chip">AWS S3</span>
+      <span class="chip">Terraform</span><span class="chip">Docker Compose</span><span class="chip">Kubernetes</span>
+      <span class="chip">Databricks DLT</span><span class="chip">Grafana</span><span class="chip">Prometheus</span>
+      <span class="chip">GitHub Actions CI</span>
+    </div>
+    <p class="lead" style="margin-top:10px;">Everything is reproducible: the local stack runs on Docker Compose (or kind/Kubernetes), the cloud tier is provisioned with Terraform, and CI runs tests, lint, dbt compile, and Terraform validation on every push.</p>
+  </section>
+
+  <footer>
+    Built by Alex Chang ·
+    <a href="https://github.com/cheng-alex-chang/payments-data-platform">github.com/cheng-alex-chang/payments-data-platform</a>
+  </footer>
+
+</div>
+
+</body>
+</html>
