@@ -47,6 +47,20 @@ def test_staging_dedups_and_marts_use_refs() -> None:
     assert "ROUND(p.amount * d.rate_to_usd, 2) AS usd_amount" in fct
 
 
+def test_staging_hashes_pii_and_types_fx_as_fixed_scale() -> None:
+    # shopper_id is PII: the Snowflake batch path must SHA-256 hash it (matching the
+    # streaming/DLT contract) so the raw customer id is never exposed in the fact.
+    stg = _read("models/staging/stg_payments.sql")
+    assert "SHA2(raw:shopper_id::INTEGER::STRING, 256) AS shopper_id" in stg
+    assert "raw:shopper_id::INTEGER        AS shopper_id" not in stg  # no un-hashed passthrough
+
+    # FX rate is money: fixed-scale NUMBER, never FLOAT (float drifts at the cent level once
+    # multiplied through amount * rate in the fact).
+    fx = _read("models/staging/stg_fx_rates.sql")
+    assert "raw:rate_to_usd::NUMBER(18, 8) AS rate_to_usd" in fx
+    assert "::FLOAT" not in fx
+
+
 def test_fct_is_incremental_with_watermark() -> None:
     fct = _read("models/marts/fct_payments_usd.sql")
     assert "materialized='incremental'" in fct

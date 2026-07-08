@@ -5,13 +5,13 @@ version: 2
 # the pipeline exactly like the old runner's RuntimeError.
 models:
   - name: stg_payments
-    description: "Grain: one row per payment (latest version after snapshot dedup)."
+    description: "Grain: one row per payment (latest version after snapshot dedup). shopper_id is SHA-256 hashed (PII), matching the streaming/DLT contract so neither pipeline exposes the raw customer id."
     columns:
       - name: payment_id
         tests: [unique, not_null]
 
   - name: stg_fx_rates
-    description: "Grain: one row per (rate_date, currency) as published by the ECB (business days only)."
+    description: "Grain: one row per (rate_date, currency) as published by the ECB (business days only). rate_to_usd is fixed-scale NUMBER(18,8) money, not FLOAT."
 
   - name: dim_date
     description: "Grain: one row per calendar day spanning the payments + FX window. Conformed date dimension: owns the calendar spine and the reporting attributes (year/quarter/month/day-of-week/is_weekend)."
