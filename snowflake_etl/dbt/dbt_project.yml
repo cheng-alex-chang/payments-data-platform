@@ -13,10 +13,10 @@ test-paths: ["tests"]
 # everything in the ANALYTICS schema (the profile's schema; no custom suffixing).
 #
 # Staging materialization is configurable via DBT_STAGING_MATERIALIZED (default `view`).
-# At small scale a view is free and always fresh. At TB scale a view is re-evaluated by
-# EVERY downstream consumer — each re-runs the QUALIFY dedup over all raw rows — so the
-# scale-correct choice is `table` (materialize the dedup once, read it many times). The
-# benchmark measures both; see docs/scale-benchmark.md.
+# A view stores no data and re-evaluates its query — including the QUALIFY dedup — for
+# every downstream consumer that reads it, so it is always current with RAW. A table
+# stores the dedup's result once and lets consumers read that, at the cost of only being
+# as fresh as the last dbt run. Which tradeoff wins depends on the deployment.
 models:
   payments_fx:
     staging:

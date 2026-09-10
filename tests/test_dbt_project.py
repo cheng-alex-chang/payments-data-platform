@@ -177,7 +177,7 @@ def test_profiles_use_env_vars_only() -> None:
 def test_materializations_match_the_old_runner() -> None:
     project = yaml.safe_load(_read("dbt_project.yml"))
     models = project["models"]["payments_fx"]
-    # Staging defaults to a view (env_var override lets the scale benchmark flip it to a
-    # table); marts are always tables.
+    # Staging defaults to a view; the env_var override is what lets a deployment store the
+    # result as a table instead. Marts are always tables.
     assert models["staging"]["+materialized"] == "{{ env_var('DBT_STAGING_MATERIALIZED', 'view') }}"
     assert models["marts"]["+materialized"] == "table"
