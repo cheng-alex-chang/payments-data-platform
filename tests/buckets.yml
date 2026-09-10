@@ -46,7 +46,6 @@ buckets:
       - tests/test_extract_payments.py
       - tests/test_stage_to_s3.py
       - tests/test_load_to_snowflake.py
-      - tests/test_scale_benchmark.py
 
   airflow:
     paths:

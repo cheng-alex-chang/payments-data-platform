@@ -6,7 +6,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#0f172a">
 <title>Payments Data Platform — CDC lakehouse, Snowflake ELT, and a serving API</title>
-<meta name="description" content="A three-tier payments data platform: a replay-safe streaming CDC lakehouse (Debezium, Kafka, Spark, Iceberg, Trino), a batch Snowflake ELT with a dbt star schema scale-tested at 4.2 billion rows / ~1 TB, and a FastAPI serving tier over the gold table. Kubernetes-native orchestration.">
+<meta name="description" content="A three-tier payments data platform: a replay-safe streaming CDC lakehouse (Debezium, Kafka, Spark, Iceberg, Trino), a batch Snowflake ELT with a dbt star schema, and a FastAPI serving tier over the gold table. Kubernetes-native orchestration.">
 <style>
   :root {
     --ink: #0f172a;
@@ -43,8 +43,8 @@
 
   /* numbers band */
   .numbers { border-bottom: 1px solid var(--line); background: var(--panel); }
-  /* Six stats: 6 across on desktop, then 3+3, then 2+2+2 -- never an orphaned last cell. */
-  .numbers .wrap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; padding: 28px 24px; }
+  /* Three stats: 3 across on desktop and tablet, stacked one per row below 700px. */
+  .numbers .wrap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 28px 24px; }
   .num { text-align: center; padding: 8px 4px; }
   .num b { display: block; color: var(--ink); font-size: 1.45rem; letter-spacing: -0.01em; }
   .num span { font-size: 0.82rem; color: var(--muted); }
@@ -93,12 +93,9 @@
   footer { margin-top: 56px; border-top: 1px solid var(--line); padding: 28px 0 40px;
            font-size: 0.9rem; color: var(--muted); }
 
-  @media (max-width: 940px) {
-    .numbers .wrap { grid-template-columns: repeat(3, 1fr); }
-  }
   @media (max-width: 700px) {
     .hero h1 { font-size: 1.7rem; }
-    .numbers .wrap { grid-template-columns: repeat(2, 1fr); }
+    .numbers .wrap { grid-template-columns: 1fr; }
     .two-col, .shots { grid-template-columns: 1fr; }
   }
 </style>
@@ -108,11 +105,10 @@
 <div class="hero">
   <div class="wrap">
     <h1>Payments Data Platform</h1>
-    <p class="tag">One payments domain, three tiers: a <strong>replay-safe streaming CDC lakehouse</strong>, a <strong>batch Snowflake ELT</strong> with a Kimball star schema <strong>scale-tested at 4.2&nbsp;billion rows / ~1&nbsp;TB</strong>, and a <strong>read-only API</strong> that serves the result back to applications.</p>
+    <p class="tag">One payments domain, three tiers: a <strong>replay-safe streaming CDC lakehouse</strong>, a <strong>batch Snowflake ELT</strong> with a Kimball star schema, and a <strong>read-only API</strong> that serves the result back to applications.</p>
     <p class="sub">Postgres → Debezium/Kafka → Spark → Iceberg/Trino for hourly operational analytics; Postgres + FX API → S3 → Snowflake → dbt for USD-normalized financials; FastAPI over gold for everything downstream. Orchestrated by Airflow on Kubernetes.</p>
     <div class="btns">
       <a class="btn primary" href="https://github.com/cheng-alex-chang/payments-data-platform">View on GitHub</a>
-      <a class="btn ghost" href="https://github.com/cheng-alex-chang/payments-data-platform/blob/main/docs/scale-benchmark.md">1&nbsp;TB benchmark write-up</a>
       <a class="btn ghost" href="https://github.com/cheng-alex-chang/payments-data-platform/blob/main/api/README.md">Serving API</a>
       <a class="btn ghost" href="./dbt-docs/">dbt lineage browser</a>
     </div>
@@ -121,10 +117,7 @@
 
 <div class="numbers">
   <div class="wrap">
-    <div class="num"><b>4.2B</b><span>distinct payments in the fact table at 1.06&nbsp;TB</span></div>
-    <div class="num"><b>12/12</b><span>data-quality gates pass at full scale</span></div>
-    <div class="num"><b>54×</b><span>dim_date build speedup — staging view&nbsp;→&nbsp;table</span></div>
-    <div class="num"><b>5M</b><span>rows processed by a daily increment — not 4.2B</span></div>
+    <div class="num"><b>12/12</b><span>dbt data-quality checks passed on the 50K-payment demo</span></div>
     <div class="num"><b>50,004</b><span>bronze&nbsp;=&nbsp;silver&nbsp;=&nbsp;gold, reconciled on Kubernetes</span></div>
     <div class="num"><b>120&nbsp;ms</b><span>p99 on the gold API summary endpoint</span></div>
   </div>
@@ -160,19 +153,8 @@
   </section>
 
   <section>
-    <h2>The ~1 TB scale story</h2>
-    <p class="lead">The same dbt project, unchanged, was benchmarked against <strong>4.2&nbsp;billion synthetic payments (1.06&nbsp;TB of logical JSON)</strong> generated server-side in Snowflake. All 12 gates passed, a 5M-row daily increment reconciled exactly — and the run surfaced a real bottleneck: staging materialized as a view re-runs its 4.4B-row dedup for every consumer. Flipping one configurable knob (<code>DBT_STAGING_MATERIALIZED=table</code>) pays the dedup once and cuts the conformed-dimension build <strong>54×</strong>.</p>
-    <div class="card">
-      <a class="zoom" href="images/scale-benchmark-build-times.svg" target="_blank" rel="noopener" aria-label="Open full-size image">
-          <img src="images/scale-benchmark-build-times.svg" alt="Bar chart: dim_date build 570.9s as a view vs 10.7s with staging as a table (54x); fct_payments_usd 525.3s vs 209.6s (2.5x)">
-        </a>
-      <p class="caption">Full method, results, and stated limitations in the <a href="https://github.com/cheng-alex-chang/payments-data-platform/blob/main/docs/scale-benchmark.md">benchmark write-up</a>.</p>
-    </div>
-  </section>
-
-  <section>
     <h2>The star schema</h2>
-    <p class="lead">Kimball dimensional model: one row per payment in the fact, USD-normalized via an FX dimension that forward-fills weekend and holiday rate gaps; a conformed date dimension; tested grain and uniqueness. Explore it interactively in the <a href="./dbt-docs/">hosted dbt lineage browser</a>.</p>
+    <p class="lead">Kimball dimensional model: one row per payment in the fact, USD-normalized via an FX dimension that forward-fills weekend and holiday rate gaps; a conformed date dimension; tested grain and uniqueness. Explore it interactively in the <a href="./dbt-docs/">hosted dbt lineage browser</a>, which shows the current model definitions and their lineage — no live warehouse statistics.</p>
     <div class="card">
       <a class="zoom" href="images/star-schema-fx.svg" target="_blank" rel="noopener" aria-label="Open full-size image">
           <img src="images/star-schema-fx.svg" alt="Star schema ERD: fct_payments_usd at the center with dim_date and dim_fx_rates, fed by staging views over RAW">
