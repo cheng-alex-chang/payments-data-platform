@@ -96,7 +96,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v4
 
-      - uses: databricks/setup-cli@v1.14.1
+      - uses: databricks/setup-cli@v1.16.1
 
       # dbt's profile and the Python connector take a private-key *path*; the secret is a
       # PEM string. Written outside the checkout's tracked tree and mode 600.
@@ -236,7 +236,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v4
 
-      - uses: databricks/setup-cli@v1.14.1
+      - uses: databricks/setup-cli@v1.16.1
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
