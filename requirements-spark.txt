@@ -8,4 +8,4 @@
 # which no supported PySpark accepts -- `brew install openjdk@17` and set JAVA_HOME).
 # The Iceberg runtime jar is resolved by Spark itself from Maven at session start; the
 # coordinate is pinned in the test module.
-pyspark==3.5.1
+pyspark==4.2.0
